@@ -378,41 +378,41 @@ class _SettingScreenState extends State<SettingScreen> {
 
               // Task Management Section
               SizedBox(height: 24),
-              Text("Task Management", style: theme.textTheme.h5),
-              SizedBox(height: 8),
-              ShadCard(
-                height: 56,
-                rowCrossAxisAlignment: CrossAxisAlignment.center,
-                columnMainAxisAlignment: MainAxisAlignment.center,
-                width: double.infinity,
-                padding: EdgeInsets.all(8),
-                child: Text("Delete All Tasks", style: theme.textTheme.muted),
-                trailing: ShadButton.danger(
-                  onPressed: () async {
-                    final confirm = await showDialog<bool>(
-                      context: context,
-                      builder: (context) => AlertDialog(
-                        title: Text("Confirm Deletion"),
-                        content: Text("Are you sure you want to delete all tasks? This action cannot be undone."),
-                        actions: [
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(false),
-                            child: Text("Cancel"),
-                          ),
-                          TextButton(
-                            onPressed: () => Navigator.of(context).pop(true),
-                            child: Text("Delete"),
-                          ),
-                        ],
-                      ),
-                    );
-                    if (confirm == true) {
-                      await _deleteAllTasks();
-                    }
-                  },
-                  child: Text("Delete"),
-                ),
-              ),
+              // Text("Task Management", style: theme.textTheme.h4),
+              // SizedBox(height: 8),
+              // ShadCard(
+              //   height: 56,
+              //   rowCrossAxisAlignment: CrossAxisAlignment.center,
+              //   columnMainAxisAlignment: MainAxisAlignment.center,
+              //   width: double.infinity,
+              //   padding: EdgeInsets.all(8),
+              //   child: Text("Delete All Tasks", style: theme.textTheme.muted),
+              //   trailing: ShadButton.destructive(
+              //     onPressed: () async {
+              //       final confirm = await showDialog<bool>(
+              //         context: context,
+              //         builder: (context) => AlertDialog(
+              //           title: Text("Confirm Deletion"),
+              //           content: Text("Are you sure you want to delete all tasks? This action cannot be undone."),
+              //           actions: [
+              //             TextButton(
+              //               onPressed: () => Navigator.of(context).pop(false),
+              //               child: Text("Cancel"),
+              //             ),
+              //             TextButton(
+              //               onPressed: () => Navigator.of(context).pop(true),
+              //               child: Text("Delete"),
+              //             ),
+              //           ],
+              //         ),
+              //       );
+              //       if (confirm == true) {
+              //         await _deleteAllTasks();
+              //       }
+              //     },
+              //     child: Text("Delete"),
+              //   ),
+              // ),
             ],
           ),
         ),

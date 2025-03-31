@@ -487,7 +487,8 @@ class _HomeState extends State<Home> {
                 ),
               ),
               SizedBox(height: 16),
-              Text('Pinned Task', style: ShadTheme.of(context).textTheme.muted),
+             pinnedTodos.isNotEmpty ?
+              Text('Pinned Task', style: ShadTheme.of(context).textTheme.muted):
               SizedBox(height: 8),
               if (pinnedTodos.isNotEmpty)
                 StaggeredGrid.count(
@@ -527,9 +528,18 @@ class _HomeState extends State<Home> {
                       );
                     },
                   ),
+                )
+              else
+                if (unpinnedTodos.isNotEmpty && pinnedTodos.isEmpty)
+                Center(
+                  child: Text(
+                    "You can pin a task to keep it at the top for quick access.",
+                    style: ShadTheme.of(context).textTheme.muted,
+                  ),
                 ),
               SizedBox(height: 16),
-              Text('Task', style: ShadTheme.of(context).textTheme.muted),
+              
+               if (unpinnedTodos.isNotEmpty) Text('Task', style: ShadTheme.of(context).textTheme.muted),
               SizedBox(height: 8),
               if (unpinnedTodos.isNotEmpty)
                 StaggeredGrid.count(
@@ -580,6 +590,24 @@ class _HomeState extends State<Home> {
                     },
                   ),
                 ),
+              if (unpinnedTodos.isEmpty && pinnedTodos.isEmpty)
+              Center(child: 
+                Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Text(
+                      "Oh no!!! 👽🛸 Alien here to kidnap a lazy person. Please escape by:",
+                      textAlign: TextAlign.center,
+                      style: ShadTheme.of(context).textTheme.muted,
+                    ),
+                    SizedBox(height: 16),
+                    ShadButton(
+                      onPressed: _showAddTodoBottomSheet,
+                      child: Text("Add Task"),
+                    ),
+                  ],
+                ),)
             ],
           ),
         ),
