@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:overlay_support/overlay_support.dart'; // Import overlay_support
 import 'helpers/theme.dart';
 import 'screens/home.dart';
 import 'screens/welcome.dart';
@@ -13,10 +14,14 @@ void main() async {
   String? enteredValue = prefs.getString('entered_value');
   print("Entered Value: $enteredValue"); // Debug print to check enteredValue
   runApp(
+    OverlaySupport.global(
+      child:
+  // Wrap your app with OverlaySupport
     ChangeNotifierProvider(
-      create: (context) => ThemeNotifier(),
-      child: MyApp(enteredValue: enteredValue),
-    ),
+        create: (context) => ThemeNotifier(),
+        child: MyApp(enteredValue: enteredValue),
+      ),
+    )
   );
 }
 

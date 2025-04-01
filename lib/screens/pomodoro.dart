@@ -8,6 +8,8 @@ import '/models/todo.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'package:audioplayers/audioplayers.dart';
+import 'package:overlay_support/overlay_support.dart'; // Add this import for overlay support
+import 'dart:html' as html; // Import dart:html for web-specific functionality
 
 //import 'soundsettings.dart';
 // Define the modes
@@ -15,14 +17,23 @@ enum PomodoroMode { pomodoro, breakMode, longBreak }
 
 class PomodoroScreen extends StatefulWidget {
   final Todo todo;
+  final int? initialMinutes;
+  final int? initialSeconds;
+  final bool? isPaused;
 
-  PomodoroScreen({required this.todo});
+  PomodoroScreen({
+    required this.todo, 
+    this.initialMinutes,
+    this.initialSeconds,
+    this.isPaused,
+  });
+  
 
   @override
   _PomodoroScreenState createState() => _PomodoroScreenState();
 }
 
-class _PomodoroScreenState extends State<PomodoroScreen> {
+class _PomodoroScreenState extends State<PomodoroScreen> with WidgetsBindingObserver {
   Timer? _timer;
   PomodoroMode _currentMode = PomodoroMode.pomodoro;
   int _minutes = 5;
@@ -40,16 +51,22 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
 
   final AudioPlayer _audioPlayer = AudioPlayer();
   final AudioPlayer _alarmPlayer = AudioPlayer();
+  OverlayEntry? _floatingWindow;
+  Timer? _floatingWindowTimer;
+  final ValueNotifier<Duration> _timerNotifier = ValueNotifier(Duration(minutes: 25));
+
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     loadPomodoroSettings();
-    //  loadPomodoroSettings();
+    _minutes = widget.initialMinutes ?? _podoromotime;
+    _seconds = widget.initialSeconds ?? 0;
+    _isPaused = widget.isPaused ?? false;
+    
     if (widget.todo != null) {
       _startTimer();
-      // _playRelaxingSound(); // Play sound when timer starts
     }
-    _minutes = _podoromotime;
   }
 
   void _playRelaxingSound() async {
@@ -107,6 +124,8 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
               _nextCycle();
             }
           }
+          // Update the notifier
+          _timerNotifier.value = Duration(minutes: _minutes, seconds: _seconds);
         });
       }
     });
@@ -304,156 +323,217 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
     _startTimer();
   }
 
-  @override
-  void dispose() {
-    _timer?.cancel();
-    _audioPlayer.dispose();
+  void _showFloatingWindow() {
+    if (_floatingWindow != null) return; // Prevent multiple floating windows
 
-    super.dispose();
+    _floatingWindow = OverlayEntry(
+      builder: (context) => Positioned(
+        bottom: 16,
+        right: 16,
+        child: FloatingTimer(
+          timerNotifier: _timerNotifier,
+          onTap: () {
+            _removeFloatingWindow();
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (context) => PomodoroScreen(
+                  todo: widget.todo,
+                  initialMinutes: _minutes,
+                  initialSeconds: _seconds,
+                  isPaused: _isPaused,
+                ),
+              ),
+            );
+          },
+        ),
+      ),
+    );
+
+    Overlay.of(context)?.insert(_floatingWindow!);
+  }
+
+  void _startFloatingWindowTimer() {
+    const oneSecond = Duration(seconds: 1);
+    _floatingWindowTimer = Timer.periodic(oneSecond, (timer) {
+      if (_floatingWindow != null) {
+        setState(() {
+          // Update the floating window's timer display
+          if (_seconds > 0) {
+            _seconds--;
+          } else {
+            if (_minutes > 0) {
+              _minutes--;
+              _seconds = 59;
+            } else {
+              // Timer has reached zero, stop the floating window timer
+              _stopFloatingWindowTimer();
+              return;
+            }
+          }
+        });
+      } else {
+        _stopFloatingWindowTimer();
+      }
+    });
+  }
+
+  void _stopFloatingWindowTimer() {
+    _floatingWindowTimer?.cancel();
+    _floatingWindowTimer = null;
+  }
+
+  void _removeFloatingWindow() {
+    _stopFloatingWindowTimer();
+    _floatingWindow?.remove();
+    _floatingWindow = null;
+  }
+
+ void _minimizeScreen() {
+  // Show the floating window
+  _showFloatingWindow();
+    // Pop the current screen without removing the overlay
+    Navigator.pop(context);
+}
+
+@override
+void dispose() {
+  WidgetsBinding.instance.removeObserver(this);
+  _stopFloatingWindowTimer(); // Cancel the floating window timer
+  // Only remove the floating window if it's not being minimized
+  if (!Navigator.canPop(context)) {
+    _floatingWindow?.remove();
+  }
+  _timer?.cancel();
+  _audioPlayer.dispose();
+  super.dispose();
+}
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) {
+      // App has come back to the foreground
+      if (!_isPaused && _timer == null) {
+        _startTimer(); // Restart the timer
+      }
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return ClipRRect(
-      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      child: Scaffold(
-        appBar: AppBar(
-          leading: IconButton(
-            icon: Icon(LucideIcons.circleX,color: ShadTheme.of(context).colorScheme.mutedForeground),
-
-            onPressed: () => Navigator.of(context).pop(),
+    return  // Wrap only the PomodoroScreen with OverlaySupport
+       ClipRRect(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+        child: Scaffold(
+          appBar: AppBar(
+            leading: IconButton(
+              icon: Icon(LucideIcons.circleX, color: ShadTheme.of(context).colorScheme.mutedForeground),
+              onPressed: () => Navigator.of(context).pop(),
+            ),
+            actions: [
+              IconButton(
+                icon: Icon(LucideIcons.minimize, color: ShadTheme.of(context).colorScheme.primary),
+                onPressed: _minimizeScreen, // Trigger minimize functionality
+              ),
+            ],
           ),
-    //      title: Text('Pomodoro Timer'),
-        ),
-        body: Center(
-          child: Container(
-            constraints: const BoxConstraints(maxWidth: 700),
-            child: Padding(
-              padding: const EdgeInsets.all(20.0),
-              child: Center(
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    Text(
-                      "Let's focusing on",
-                      style: ShadTheme.of(context).textTheme.muted,
-                    ),
-                    SizedBox(height: 8),
-                    Text(
-                      widget.todo.text,
-                      maxLines: 2,
-                      overflow: TextOverflow.fade,
-                      style: ShadTheme.of(context).textTheme.h4,
-                      textAlign: TextAlign.center,
-                    ),
-                    SizedBox(height: 16),
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                      children: [
-                        Column(
+          body: Center(
+            child: Container(
+              constraints: const BoxConstraints(maxWidth: 700),
+              child: Padding(
+                padding: const EdgeInsets.all(20.0),
+                child: Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        "Let's focusing on",
+                        style: ShadTheme.of(context).textTheme.muted,
+                      ),
+                      SizedBox(height: 8),
+                      Text(
+                        widget.todo.text,
+                        maxLines: 2,
+                        overflow: TextOverflow.fade,
+                        style: ShadTheme.of(context).textTheme.h4,
+                        textAlign: TextAlign.center,
+                      ),
+                      SizedBox(height: 16),
+                      Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                        children: [
+                          Column(
                             mainAxisAlignment: MainAxisAlignment.center,
                             children: [
-                              _buildModeButton(
-                                  'Pomodoro', PomodoroMode.pomodoro),
+                              _buildModeButton('Pomodoro', PomodoroMode.pomodoro),
                               SizedBox(height: 8),
                               Row(
-                                  crossAxisAlignment: CrossAxisAlignment.center,
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Icon(
-                                        _cyclesCompleted == 0
-                                            ? LucideIcons.circle
-                                            : Icons.circle,
-                                        color: _cyclesCompleted >= 0
-                                            ? ShadTheme.of(context)
-                                                .colorScheme
-                                                .primary
-                                            : ShadTheme.of(context)
-                                                .colorScheme
-                                                .muted,
-                                        size: 16),
-                                    //   Icon(LucideIcons.circle, color: ShadTheme.of(context).colorScheme.primary, size: 10):
-                                    //   Icon(Icons.circle, color: ShadTheme.of(context).colorScheme.primary, size: 10),
-                                    // Text("•", style: TextStyle(
-                                    //   fontSize: 40,
-                                    //   color: _cyclesCompleted > 0? Colors.black : Colors.grey
-                                    //   )),
-                                    //  Icon(Icons.circle, color: ShadTheme.of(context).colorScheme.primary, size: 10),
-                                    Icon(
-                                        _cyclesCompleted == 1
-                                            ? LucideIcons.circle
-                                            : Icons.circle,
-                                        color: _cyclesCompleted >= 1
-                                            ? ShadTheme.of(context)
-                                                .colorScheme
-                                                .primary
-                                            : ShadTheme.of(context)
-                                                .colorScheme
-                                                .muted,
-                                        size: 16),
-                                    Icon(
-                                        _cyclesCompleted == 2
-                                            ? LucideIcons.circle
-                                            : Icons.circle,
-                                        color: _cyclesCompleted >= 2
-                                            ? ShadTheme.of(context)
-                                                .colorScheme
-                                                .primary
-                                            : ShadTheme.of(context)
-                                                .colorScheme
-                                                .muted,
-                                        size: 16),
-                                    Icon(
-                                        _cyclesCompleted == 3
-                                            ? LucideIcons.circle
-                                            : Icons.circle,
-                                        color: _cyclesCompleted >= 3
-                                            ? ShadTheme.of(context)
-                                                .colorScheme
-                                                .primary
-                                            : ShadTheme.of(context)
-                                                .colorScheme
-                                                .muted,
-                                        size: 16),
-                                  ])
-                            ]),
-                        _buildModeButton('Break', PomodoroMode.breakMode),
-                        _buildModeButton('Long Break', PomodoroMode.longBreak),
-                      ],
-                    ),
-                    //    SizedBox(height: 16),
-                    Text(
-                      '$_minutes:${_seconds.toString().padLeft(2, '0')}',
-                      style: TextStyle(
-                        fontSize: 80.0,
-                        fontWeight: FontWeight.bold,
-                        fontFamily:
-                            ShadTheme.of(context).textTheme.h1.fontFamily,
-                      ), // ShadTheme.of(context).textTheme.h1,
-                    ),
-                    SizedBox(height: 16),
-                    ShadButton(
-                      onPressed: _togglePauseResume,
-                      child: Text(_text),
-
-                      //  text: Text('Pause'),
-                    ),
-                    SizedBox(height: 42),
-                    ShadButton.outline(
-                      onPressed: () => toggleSettings(context),
-                      icon: Icon(LucideIcons.music, size: 20),
-                      //  text: Text('Pause'),
-                    ),
-                    // Text('$_cyclesCompleted')
-                  ],
+                                crossAxisAlignment: CrossAxisAlignment.center,
+                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                children: [
+                                  Icon(
+                                    _cyclesCompleted == 0 ? LucideIcons.circle : Icons.circle,
+                                    color: _cyclesCompleted >= 0
+                                        ? ShadTheme.of(context).colorScheme.primary
+                                        : ShadTheme.of(context).colorScheme.muted,
+                                    size: 16,
+                                  ),
+                                  Icon(
+                                    _cyclesCompleted == 1 ? LucideIcons.circle : Icons.circle,
+                                    color: _cyclesCompleted >= 1
+                                        ? ShadTheme.of(context).colorScheme.primary
+                                        : ShadTheme.of(context).colorScheme.muted,
+                                    size: 16,
+                                  ),
+                                  Icon(
+                                    _cyclesCompleted == 2 ? LucideIcons.circle : Icons.circle,
+                                    color: _cyclesCompleted >= 2
+                                        ? ShadTheme.of(context).colorScheme.primary
+                                        : ShadTheme.of(context).colorScheme.muted,
+                                    size: 16,
+                                  ),
+                                  Icon(
+                                    _cyclesCompleted == 3 ? LucideIcons.circle : Icons.circle,
+                                    color: _cyclesCompleted >= 3
+                                        ? ShadTheme.of(context).colorScheme.primary
+                                        : ShadTheme.of(context).colorScheme.muted,
+                                    size: 16,
+                                  ),
+                                ],
+                              ),
+                            ],
+                          ),
+                          _buildModeButton('Break', PomodoroMode.breakMode),
+                          _buildModeButton('Long Break', PomodoroMode.longBreak),
+                        ],
+                      ),
+                      Text(
+                        '$_minutes:${_seconds.toString().padLeft(2, '0')}',
+                        style: TextStyle(
+                          fontSize: 80.0,
+                          fontWeight: FontWeight.bold,
+                          fontFamily: ShadTheme.of(context).textTheme.h1.fontFamily,
+                        ),
+                      ),
+                      SizedBox(height: 16),
+                      ShadButton(
+                        onPressed: _togglePauseResume,
+                        child: Text(_text),
+                      ),
+                      SizedBox(height: 42),
+                      ShadButton.outline(
+                        onPressed: () => toggleSettings(context),
+                        icon: Icon(LucideIcons.music, size: 20),
+                      ),
+                    ],
+                  ),
                 ),
               ),
             ),
           ),
         ),
-      ),
+      
     );
   }
 
@@ -583,6 +663,67 @@ class _PomodoroScreenState extends State<PomodoroScreen> {
                 ],
               ),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+class FloatingTimer extends StatefulWidget {
+  final ValueNotifier<Duration> timerNotifier;
+  final VoidCallback onTap;
+
+  const FloatingTimer({
+    required this.timerNotifier,
+    required this.onTap,
+  });
+
+  @override
+  State<FloatingTimer> createState() => _FloatingTimerState();
+}
+
+class _FloatingTimerState extends State<FloatingTimer> {
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onTap: widget.onTap,
+      child: Material(
+        elevation: 4,
+        borderRadius: BorderRadius.circular(16),
+        child: Container(
+          width: 120,
+          height: 80,
+          decoration: BoxDecoration(
+            color: ShadTheme.of(context).colorScheme.primary,
+            borderRadius: BorderRadius.circular(16),
+          ),
+          child: Center(
+            child: Column(
+              mainAxisAlignment: MainAxisAlignment.center,
+              children: [
+                ValueListenableBuilder<Duration>(
+                  valueListenable: widget.timerNotifier,
+                  builder: (context, duration, child) {
+                    return Text(
+                      '${duration.inMinutes}:${(duration.inSeconds % 60).toString().padLeft(2, '0')}',
+                      style: TextStyle(
+                        color: ShadTheme.of(context).colorScheme.primaryForeground,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    );
+                  },
+                ),
+                SizedBox(height: 4),
+                Text(
+                  'Pomodoro',
+                  style: TextStyle(
+                    color: ShadTheme.of(context).colorScheme.primaryForeground,
+                    fontSize: 12,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),
