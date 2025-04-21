@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import '../helpers/theme.dart';
+import 'account_settings.dart';
 
 class SettingScreen extends StatefulWidget {
   final VoidCallback onClose;
@@ -157,30 +158,49 @@ class _SettingScreenState extends State<SettingScreen> {
               // General Settings Section
               Text("General Settings", style: theme.textTheme.p),
               SizedBox(height: 8),
-              ShadCard(
-                height: 56,
-                rowCrossAxisAlignment: CrossAxisAlignment.center,
-                columnMainAxisAlignment: MainAxisAlignment.start,
-                width: double.infinity,
-                padding: EdgeInsets.all(8),
-                child: Text("Your Name", style: theme.textTheme.muted),
-                trailing: Container(
-                  width: 120,
-                  child: ShadInput(
-                    controller: _nameController,
-                    textAlign: TextAlign.end,
-                    style: theme.textTheme.p,
-                    decoration: ShadDecoration(
-                      color: theme.colorScheme.card,
-                      focusedBorder: ShadBorder.none,
-                      border: ShadBorder.none,
-                      secondaryBorder: ShadBorder.none,
-                      disableSecondaryBorder: true,
+              GestureDetector(
+                onTap: () {
+                  showModalBottomSheet(
+                    context: context,
+                    isScrollControlled: true,
+                    backgroundColor: Colors.transparent,
+                    builder: (context) => Container(
+                      height: MediaQuery.of(context).size.height * 0.9,
+                      child: AccountSettingsScreen(
+                        onClose: () => Navigator.pop(context),
+                      ),
                     ),
-                    onEditingComplete: () async {
-                      await _saveName();
-                      FocusScope.of(context).unfocus();
-                    },
+                  );
+                },
+                child: ShadCard(
+                  height: 56,
+                  rowCrossAxisAlignment: CrossAxisAlignment.center,
+                  columnMainAxisAlignment: MainAxisAlignment.start,
+                  width: double.infinity,
+                  padding: EdgeInsets.all(8),
+                  child: Text("Your Name", style: theme.textTheme.muted),
+                  trailing: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 120,
+                        child: ShadInput(
+                          controller: _nameController,
+                          textAlign: TextAlign.end,
+                          style: theme.textTheme.p,
+                          enabled: false, // Make input read-only
+                          decoration: ShadDecoration(
+                            color: theme.colorScheme.card,
+                            focusedBorder: ShadBorder.none,
+                            border: ShadBorder.none,
+                            secondaryBorder: ShadBorder.none,
+                            disableSecondaryBorder: true,
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 8),
+                      Icon(Icons.arrow_forward_ios, size: 16),
+                    ],
                   ),
                 ),
               ),

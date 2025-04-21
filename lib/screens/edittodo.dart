@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '/models/todo.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class EditTodoScreen extends StatefulWidget {
   final Todo todo;
@@ -34,34 +35,48 @@ class _EditTodoScreenState extends State<EditTodoScreen> {
   Future<void> _saveEdit() async {
     if (_textController.text.isEmpty) return;
 
-    final prefs = await SharedPreferences.getInstance();
-    final todoStrings = prefs.getStringList('todos') ?? [];
+    final supabase = Supabase.instance.client;
+    final currentUser = supabase.auth.currentUser;
 
-    // Create an updated Todo using widget.todo's id.
-    final updatedTodo = Todo(
-      id: widget.todo.id,
-      text: _textController.text,
-      isPinned: _isPinned,
-      tag: _selectedTag,
-    );
-
-    // Find and replace the todo with the matching id.
-    for (int i = 0; i < todoStrings.length; i++) {
-      final Map<String, dynamic> todoMap = json.decode(todoStrings[i]);
-      if (todoMap['id'] == widget.todo.id) {
-        todoStrings[i] = json.encode(updatedTodo.toJson());
-        break;
+    if (currentUser == null) {
+      if (mounted) {
+        ShadToaster.of(context).show(
+          const ShadToast.destructive(
+            description: Text('You must be logged in to edit tasks'),
+          ),
+        );
       }
+      return;
     }
 
-    await prefs.setStringList('todos', todoStrings);
-    widget.onEdit();
-    ShadToaster.of(context).show(
-      const ShadToast(
-        description: Text('Task edited'),
-      ),
-    );
-    Navigator.pop(context);
+    try {
+      await supabase.from('notes').update({
+        'text': _textController.text,
+        'is_pinned': _isPinned,
+        'tag': _selectedTag,
+      }).match({
+        'id': widget.todo.id,
+        'user_id': currentUser.id
+      });
+
+      widget.onEdit();
+      if (mounted) {
+        ShadToaster.of(context).show(
+          const ShadToast(
+            description: Text('Task edited'),
+          ),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ShadToaster.of(context).show(
+          ShadToast.destructive(
+            description: Text('Failed to edit task: $e'),
+          ),
+        );
+      }
+    }
   }
 
   @override
@@ -81,9 +96,9 @@ class _EditTodoScreenState extends State<EditTodoScreen> {
                 note = value;
               }),
               controller: _textController,
-             minLines: null,
+              minLines: null,
               maxLines: null,
-            expands: true,
+              expands: true,
               autofocus: true,
               style: ShadTheme.of(context).textTheme.h4.copyWith(fontSize: 20),
               decoration: ShadDecoration(

@@ -389,25 +389,23 @@ class _PomodoroScreenState extends State<PomodoroScreen> with WidgetsBindingObse
     _floatingWindow = null;
   }
 
- void _minimizeScreen() {
-  // Show the floating window
-  _showFloatingWindow();
-    // Pop the current screen without removing the overlay
-    Navigator.pop(context);
-}
-
-@override
-void dispose() {
-  WidgetsBinding.instance.removeObserver(this);
-  _stopFloatingWindowTimer(); // Cancel the floating window timer
-  // Only remove the floating window if it's not being minimized
-  if (!Navigator.canPop(context)) {
-    _floatingWindow?.remove();
+  void _minimizeScreen() {
+    // Pass the current timer duration back to the home screen
+    Navigator.pop(context, Duration(minutes: _minutes, seconds: _seconds));
   }
-  _timer?.cancel();
-  _audioPlayer.dispose();
-  super.dispose();
-}
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _stopFloatingWindowTimer(); // Cancel the floating window timer
+    // Only remove the floating window if it's not being minimized
+    if (!Navigator.canPop(context)) {
+      _floatingWindow?.remove();
+    }
+    _timer?.cancel();
+    _audioPlayer.dispose();
+    super.dispose();
+  }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -421,119 +419,117 @@ void dispose() {
 
   @override
   Widget build(BuildContext context) {
-    return  // Wrap only the PomodoroScreen with OverlaySupport
-       ClipRRect(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-        child: Scaffold(
-          appBar: AppBar(
-            leading: IconButton(
-              icon: Icon(LucideIcons.circleX, color: ShadTheme.of(context).colorScheme.mutedForeground),
-              onPressed: () => Navigator.of(context).pop(),
-            ),
-            actions: [
-              IconButton(
-                icon: Icon(LucideIcons.minimize, color: ShadTheme.of(context).colorScheme.primary),
-                onPressed: _minimizeScreen, // Trigger minimize functionality
-              ),
-            ],
+    return ClipRRect(
+      borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      child: Scaffold(
+        appBar: AppBar(
+          leading: IconButton(
+            icon: Icon(LucideIcons.circleX, color: ShadTheme.of(context).colorScheme.mutedForeground),
+            onPressed: () => Navigator.of(context).pop(),
           ),
-          body: Center(
-            child: Container(
-              constraints: const BoxConstraints(maxWidth: 700),
-              child: Padding(
-                padding: const EdgeInsets.all(20.0),
-                child: Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(
-                        "Let's focusing on",
-                        style: ShadTheme.of(context).textTheme.muted,
-                      ),
-                      SizedBox(height: 8),
-                      Text(
-                        widget.todo.text,
-                        maxLines: 2,
-                        overflow: TextOverflow.fade,
-                        style: ShadTheme.of(context).textTheme.h4,
-                        textAlign: TextAlign.center,
-                      ),
-                      SizedBox(height: 16),
-                      Row(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-                        children: [
-                          Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              _buildModeButton('Pomodoro', PomodoroMode.pomodoro),
-                              SizedBox(height: 8),
-                              Row(
-                                crossAxisAlignment: CrossAxisAlignment.center,
-                                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                children: [
-                                  Icon(
-                                    _cyclesCompleted == 0 ? LucideIcons.circle : Icons.circle,
-                                    color: _cyclesCompleted >= 0
-                                        ? ShadTheme.of(context).colorScheme.primary
-                                        : ShadTheme.of(context).colorScheme.muted,
-                                    size: 16,
-                                  ),
-                                  Icon(
-                                    _cyclesCompleted == 1 ? LucideIcons.circle : Icons.circle,
-                                    color: _cyclesCompleted >= 1
-                                        ? ShadTheme.of(context).colorScheme.primary
-                                        : ShadTheme.of(context).colorScheme.muted,
-                                    size: 16,
-                                  ),
-                                  Icon(
-                                    _cyclesCompleted == 2 ? LucideIcons.circle : Icons.circle,
-                                    color: _cyclesCompleted >= 2
-                                        ? ShadTheme.of(context).colorScheme.primary
-                                        : ShadTheme.of(context).colorScheme.muted,
-                                    size: 16,
-                                  ),
-                                  Icon(
-                                    _cyclesCompleted == 3 ? LucideIcons.circle : Icons.circle,
-                                    color: _cyclesCompleted >= 3
-                                        ? ShadTheme.of(context).colorScheme.primary
-                                        : ShadTheme.of(context).colorScheme.muted,
-                                    size: 16,
-                                  ),
-                                ],
-                              ),
-                            ],
-                          ),
-                          _buildModeButton('Break', PomodoroMode.breakMode),
-                          _buildModeButton('Long Break', PomodoroMode.longBreak),
-                        ],
-                      ),
-                      Text(
-                        '$_minutes:${_seconds.toString().padLeft(2, '0')}',
-                        style: TextStyle(
-                          fontSize: 80.0,
-                          fontWeight: FontWeight.bold,
-                          fontFamily: ShadTheme.of(context).textTheme.h1.fontFamily,
+          actions: [
+            IconButton(
+              icon: Icon(LucideIcons.minimize, color: ShadTheme.of(context).colorScheme.primary),
+              onPressed: _minimizeScreen, // Trigger minimize functionality
+            ),
+          ],
+        ),
+        body: Center(
+          child: Container(
+            constraints: const BoxConstraints(maxWidth: 700),
+            child: Padding(
+              padding: const EdgeInsets.all(20.0),
+              child: Center(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Text(
+                      "Let's focusing on",
+                      style: ShadTheme.of(context).textTheme.muted,
+                    ),
+                    SizedBox(height: 8),
+                    Text(
+                      widget.todo.text,
+                      maxLines: 2,
+                      overflow: TextOverflow.fade,
+                      style: ShadTheme.of(context).textTheme.h4,
+                      textAlign: TextAlign.center,
+                    ),
+                    SizedBox(height: 16),
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                      children: [
+                        Column(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            _buildModeButton('Pomodoro', PomodoroMode.pomodoro),
+                            SizedBox(height: 8),
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Icon(
+                                  _cyclesCompleted == 0 ? LucideIcons.circle : Icons.circle,
+                                  color: _cyclesCompleted >= 0
+                                      ? ShadTheme.of(context).colorScheme.primary
+                                      : ShadTheme.of(context).colorScheme.muted,
+                                  size: 16,
+                                ),
+                                Icon(
+                                  _cyclesCompleted == 1 ? LucideIcons.circle : Icons.circle,
+                                  color: _cyclesCompleted >= 1
+                                      ? ShadTheme.of(context).colorScheme.primary
+                                      : ShadTheme.of(context).colorScheme.muted,
+                                  size: 16,
+                                ),
+                                Icon(
+                                  _cyclesCompleted == 2 ? LucideIcons.circle : Icons.circle,
+                                  color: _cyclesCompleted >= 2
+                                      ? ShadTheme.of(context).colorScheme.primary
+                                      : ShadTheme.of(context).colorScheme.muted,
+                                  size: 16,
+                                ),
+                                Icon(
+                                  _cyclesCompleted == 3 ? LucideIcons.circle : Icons.circle,
+                                  color: _cyclesCompleted >= 3
+                                      ? ShadTheme.of(context).colorScheme.primary
+                                      : ShadTheme.of(context).colorScheme.muted,
+                                  size: 16,
+                                ),
+                              ],
+                            ),
+                          ],
                         ),
+                        _buildModeButton('Break', PomodoroMode.breakMode),
+                        _buildModeButton('Long Break', PomodoroMode.longBreak),
+                      ],
+                    ),
+                    Text(
+                      '$_minutes:${_seconds.toString().padLeft(2, '0')}',
+                      style: TextStyle(
+                        fontSize: 80.0,
+                        fontWeight: FontWeight.bold,
+                        fontFamily: ShadTheme.of(context).textTheme.h1.fontFamily,
                       ),
-                      SizedBox(height: 16),
-                      ShadButton(
-                        onPressed: _togglePauseResume,
-                        child: Text(_text),
-                      ),
-                      SizedBox(height: 42),
-                      ShadButton.outline(
-                        onPressed: () => toggleSettings(context),
-                        icon: Icon(LucideIcons.music, size: 20),
-                      ),
-                    ],
-                  ),
+                    ),
+                    SizedBox(height: 16),
+                    ShadButton(
+                      onPressed: _togglePauseResume,
+                      child: Text(_text),
+                    ),
+                    SizedBox(height: 42),
+                    ShadButton.outline(
+                      onPressed: () => toggleSettings(context),
+                      icon: Icon(LucideIcons.music, size: 20),
+                    ),
+                  ],
                 ),
               ),
             ),
           ),
         ),
-      
+      ),
     );
   }
 

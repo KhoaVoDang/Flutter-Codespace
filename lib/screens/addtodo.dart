@@ -4,6 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '/models/todo.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AddTodoScreen extends StatefulWidget {
   final VoidCallback onAdd;
@@ -22,26 +23,47 @@ class _AddTodoScreenState extends State<AddTodoScreen> {
   Future<void> _saveTodo() async {
     if (_textController.text.isEmpty) return;
 
-    final prefs = await SharedPreferences.getInstance();
-    final todoStrings = prefs.getStringList('todos') ?? [];
+    final supabase = Supabase.instance.client;
+    final currentUser = supabase.auth.currentUser;
 
-    final newTodo = Todo(
-      id: DateTime.now().millisecondsSinceEpoch,
-      text: _textController.text,
-      isPinned: _isPinned,
-      tag: _selectedTag,
-    );
+    if (currentUser == null) {
+      if (mounted) {
+        ShadToaster.of(context).show(
+          const ShadToast.destructive(
+            description: Text('You must be logged in to add tasks'),
+          ),
+        );
+      }
+      return;
+    }
 
-    todoStrings.add(json.encode(newTodo.toJson()));
-    await prefs.setStringList('todos', todoStrings);
+    try {
+      await supabase.from('notes').insert({
+        'text': _textController.text,
+        'is_pinned': _isPinned,
+        'tag': _selectedTag,
+        'created_at': DateTime.now().toIso8601String(),
+        'user_id': currentUser.id, // Add the user_id
+      });
 
-    widget.onAdd();
-    ShadToaster.of(context).show(
-      const ShadToast(
-        description: Text('Task added'),
-      ),
-    );
-    Navigator.pop(context);
+      widget.onAdd();
+      if (mounted) {
+        ShadToaster.of(context).show(
+          const ShadToast(
+            description: Text('Task added'),
+          ),
+        );
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        ShadToaster.of(context).show(
+          ShadToast.destructive(
+            description: Text('Failed to add task: $e'),
+          ),
+        );
+      }
+    }
   }
 
   @override

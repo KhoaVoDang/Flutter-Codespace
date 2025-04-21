@@ -2,56 +2,72 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-import 'package:overlay_support/overlay_support.dart'; // Import overlay_support
+import 'package:overlay_support/overlay_support.dart';
+import 'package:supabase_flutter/supabase_flutter.dart'; // Import Supabase
 import 'helpers/theme.dart';
 import 'screens/home.dart';
 import 'screens/welcome.dart';
+import 'screens/login.dart';
 import 'package:google_fonts/google_fonts.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  SharedPreferences prefs = await SharedPreferences.getInstance();
-  String? enteredValue = prefs.getString('entered_value');
-  print("Entered Value: $enteredValue"); // Debug print to check enteredValue
+
+  // Initialize Supabase
+  await Supabase.initialize(
+    url: 'https://diivvqktuwuhzocbrvvk.supabase.co', // Replace with your Supabase API URL
+    anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImRpaXZ2cWt0dXd1aHpvY2JydnZrIiwicm9sZSI6ImFub24iLCJpYXQiOjE3NDUxMzU1NjMsImV4cCI6MjA2MDcxMTU2M30.l7XWnlKNysdGD5_7F5_6hkeFEW4hsaSF_6bmeJBE40k', // Replace with your Supabase API Key
+  );
+
   runApp(
     OverlaySupport.global(
-      child:
-  // Wrap your app with OverlaySupport
-    ChangeNotifierProvider(
+      child: ChangeNotifierProvider(
         create: (context) => ThemeNotifier(),
-        child: MyApp(enteredValue: enteredValue),
+        child: const MyApp(),
       ),
-    )
+    ),
   );
 }
 
 class MyApp extends StatelessWidget {
-  final String? enteredValue;
-  const MyApp({required this.enteredValue, super.key});
+  const MyApp({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
-    print(
-        "Initial Route: ${enteredValue != null ? Home.id : Welcome.id}"); // Debug print to check initialRoute
-
     return Consumer<ThemeNotifier>(
       builder: (context, themeNotifier, child) {
         return ShadApp.material(
           title: 'Flutter Demo',
-          //    textTheme: themeNotifier.currentTheme.textTheme,
           darkTheme: themeNotifier.currentTheme,
           theme: themeNotifier.currentTheme.copyWith(
             textTheme: ShadTextTheme.fromGoogleFont(
               GoogleFonts.inter,
             ),
           ),
-          //   themeMode: ThemeMode.light,
-          initialRoute: enteredValue != null ? Home.id : Welcome.id,
+          home: StreamBuilder<AuthState>(
+            stream: Supabase.instance.client.auth.onAuthStateChange,
+            builder: (context, snapshot) {
+              if (snapshot.hasData) {
+                final session = snapshot.data!.session;
+                if (session != null) {
+                  // User is logged in, show Home
+                  return const Home();
+                } else {
+                  // User is not logged in, show Login
+                  return const Login();
+                }
+              } else {
+                // Checking auth state, show a loading indicator
+                return const Scaffold(
+                  body: Center(child: CircularProgressIndicator()),
+                );
+              }
+            },
+          ),
           routes: {
             Welcome.id: (_) => Welcome(),
+            Login.id: (_) => Login(),
             Home.id: (_) => Home(),
-            // Login.id: (_) => Login(),
-            // ColorSelectionScreen.id: (_) => ColorSelectionScreen(),
           },
         );
       },

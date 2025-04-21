@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
 import 'package:flutter/material.dart';
@@ -6,11 +7,13 @@ import '/models/todo.dart';
 import 'package:intl/intl.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import 'addtodo.dart';
 import 'settings.dart';
 import 'edittodo.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'pomodoro.dart';
+import '/services/pomodoro_service.dart';
 
 class Home extends StatefulWidget {
   const Home({Key? key}) : super(key: key);
@@ -26,6 +29,10 @@ class _HomeState extends State<Home> {
   String _selectedTag = 'All';
   int _selectedGrid = 1;
   bool _showInfo = false; // Controls the flipped state of the header card
+  int _currentHeaderIndex = 0; // Tracks the current header card index
+  final PomodoroService _pomodoroService = PomodoroService();
+  late StreamSubscription<Duration> _timerSubscription;
+  Duration _remainingTime = Duration.zero;
 
   static final _shortDateFormatter = DateFormat('EEE');
   static final _monthDayFormatter = DateFormat('MMM d');
@@ -40,6 +47,11 @@ class _HomeState extends State<Home> {
   void initState() {
     super.initState();
     _loadInitialData();
+    _timerSubscription = _pomodoroService.timerStream.listen((time) {
+      setState(() {
+        _remainingTime = time;
+      });
+    });
   }
 
   Future<void> _loadName() async {
@@ -241,12 +253,7 @@ class _HomeState extends State<Home> {
                         ),
                         onPressed: () {
                           Navigator.pop(context); // Close the options sheet
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => PomodoroScreen(todo: todo),
-                            ),
-                          );
+                          _showPomodoroScreen(todo);
                         },
                       ),
                     ),
@@ -260,37 +267,105 @@ class _HomeState extends State<Home> {
     );
   }
 
-  /// Deletes the given todo from SharedPreferences and reloads the list.
+  /// Deletes the given todo from Supabase and reloads the list.
   Future<void> _deleteTodo(Todo todo) async {
-    final prefs = await SharedPreferences.getInstance();
-    final todoStrings = prefs.getStringList('todos') ?? [];
-    // Remove the todo by matching the id.
-    todoStrings.removeWhere((todoString) {
-      final Map<String, dynamic> todoMap = json.decode(todoString);
-      return todoMap['id'] == todo.id;
-    });
-    await prefs.setStringList('todos', todoStrings);
-    _loadTodos();
+    final supabase = Supabase.instance.client;
+    try {
+      final currentUser = supabase.auth.currentUser;
+      if (currentUser == null) {
+        throw 'No user logged in';
+      }
+
+      final response = await supabase
+          .from('notes')
+          .delete()
+          .eq('id', todo.id)
+          .eq('user_id', currentUser.id);
+
+      if (response.error != null) {
+        throw response.error!;
+      }
+
+      _loadTodos();
+    } catch (e) {
+      print('Error deleting todo: $e');
+      ShadToaster.of(context).show(
+        ShadToast.destructive(
+          description: Text('Failed to delete task: $e'),
+        ),
+      );
+    }
   }
 
   void _toggleTodoCompletion(Todo todo) async {
-    setState(() {
-      todo.isDone = !todo.isDone;
-    });
-    final prefs = await SharedPreferences.getInstance();
-    final updatedTodos = todos.map((t) => json.encode(t.toJson())).toList();
-    await prefs.setStringList('todos', updatedTodos);
+    final supabase = Supabase.instance.client;
+    try {
+      final currentUser = supabase.auth.currentUser;
+      if (currentUser == null) {
+        throw 'No user logged in';
+      }
+
+      await supabase
+          .from('notes')
+          .update({'is_done': !todo.isDone})
+          .match({'id': todo.id, 'user_id': currentUser.id});
+
+      setState(() {
+        todo.isDone = !todo.isDone;
+      });
+    } catch (e) {
+      print('Error toggling completion: $e');
+      if (mounted) {
+        ShadToaster.of(context).show(
+          ShadToast.destructive(
+            description: Text('Failed to update task: $e'),
+          ),
+        );
+      }
+    }
   }
 
   Future<void> _loadTodos() async {
-    final prefs = await SharedPreferences.getInstance();
-    final todoStrings = prefs.getStringList('todos') ?? [];
-    setState(() {
-      todos = todoStrings.map((todoString) {
-        final todoMap = Map<String, dynamic>.from(json.decode(todoString));
-        return Todo.fromJson(todoMap);
-      }).toList();
-    });
+    final supabase = Supabase.instance.client;
+    try {
+      final currentUser = supabase.auth.currentUser;
+      if (currentUser == null) {
+        throw 'No user logged in';
+      }
+
+      final response = await supabase
+          .from('notes')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .order('created_at', ascending: false); // Optional: order by creation date
+
+      if (response is! List) {
+        throw 'Invalid response format';
+      }
+
+      setState(() {
+        todos = response.map((item) {
+          final data = {
+            'id': item['id'].toString(),
+            'created_at': item['created_at'],
+            'text': item['text'] ?? '',
+            'is_done': item['is_done'] ?? false,
+            'is_pinned': item['is_pinned'] ?? false,
+            'tag': item['tag'] ?? '',
+          };
+          return Todo.fromJson(data);
+        }).toList();
+      });
+    } catch (e) {
+      print('Error loading todos: $e');
+      if (mounted) {
+        ShadToaster.of(context).show(
+          ShadToast.destructive(
+            description: Text('Failed to load tasks: $e'),
+          ),
+        );
+      }
+    }
   }
 
   List<Todo> get pinnedTodos => todos.where((todo) => todo.isPinned).toList();
@@ -314,11 +389,249 @@ class _HomeState extends State<Home> {
     );
   }
 
+  void _showPomodoroScreen(Todo todo) async {
+    await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => PomodoroScreen(
+          todo: todo,
+          initialMinutes: _remainingTime.inMinutes,
+          initialSeconds: _remainingTime.inSeconds.remainder(60),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildHeaderCard() {
+    final List<Widget> headerCards = [
+      // Hello card
+      ShadCard(
+        key: ValueKey('hello_card_${DateTime.now().millisecondsSinceEpoch}'),
+        padding: EdgeInsets.all(16),
+        height: 88,
+        width: double.infinity,
+        child: Row(
+          children: [
+            Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Hello $_enteredName',
+                  style: ShadTheme.of(context).textTheme.h3,
+                ),
+                RichText(
+                  text: TextSpan(
+                    style: ShadTheme.of(context).textTheme.muted,
+                    children: [
+                      const TextSpan(text: 'You have '),
+                      TextSpan(
+                        text: '${todos.where((todo) => !todo.isDone).length} task(s)',
+                        style: TextStyle(
+                          color: ShadTheme.of(context).colorScheme.primary,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const TextSpan(text: ' to complete'),
+                    ],
+                  ),
+                ),
+              ],
+            ),
+            // Spacer(),
+            // ShadButton.outline(
+            //   child: Icon(LucideIcons.settings2),
+            //   onPressed: () {
+            //     showModalBottomSheet(
+            //       context: context,
+            //       isScrollControlled: true,
+            //       shape: RoundedRectangleBorder(
+            //         borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+            //       ),
+            //       builder: (context) => ConstrainedBox(
+            //         constraints: BoxConstraints(
+            //           maxHeight: MediaQuery.of(context).size.height * 0.9,
+            //         ),
+            //         child: SettingScreen(
+            //           onClose: () {
+            //             _loadInitialData();
+            //             Navigator.pop(context);
+            //           },
+            //         ),
+            //       ),
+            //     );
+            //   },
+            // ),
+          ],
+        ),
+      ),
+      // Date card
+      ShadCard(
+        key: ValueKey('date_card_${DateTime.now().millisecondsSinceEpoch}'),
+        padding: EdgeInsets.all(16),
+        height: 88,
+        width: double.infinity,
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          crossAxisAlignment: CrossAxisAlignment.center,
+          children: [
+            Row(
+              children: [
+                Text(
+                  _shortDateFormatter.format(DateTime.now()),
+                  style: ShadTheme.of(context).textTheme.h3,
+                ),
+                const SizedBox(width: 8),
+                Container(
+                  width: 16,
+                  height: 16,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: ShadTheme.of(context).colorScheme.primary,
+                  ),
+                ),
+              ],
+            ),
+            const Spacer(),
+            _buildDateDisplay(DateTime.now()),
+            // ShadButton.outline(
+            //   child: Icon(LucideIcons.settings2),
+            //   onPressed: () {
+            //     showModalBottomSheet(
+            //       context: context,
+            //       isScrollControlled: true,
+            //       shape: RoundedRectangleBorder(
+            //         borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+            //       ),
+            //       builder: (context) => ConstrainedBox(
+            //         constraints: BoxConstraints(
+            //           maxHeight: MediaQuery.of(context).size.height * 0.9,
+            //         ),
+            //         child: SettingScreen(onClose: () {
+            //           Navigator.pop(context);
+            //         }),
+            //       ),
+            //     );
+            //   },
+            // ),
+          ],
+        ),
+      ),
+      // Pomodoro card
+      if (_pomodoroService.isRunning)
+        GestureDetector(
+          onTap: () {
+            // Open the Pomodoro screen with the current timer
+            _showPomodoroScreen(
+              todos.firstWhere((todo) => todo.isPinned, orElse: () => todos.first),
+            );
+          },
+          child: ShadCard(
+            key: ValueKey('pomodoro_card_${DateTime.now().millisecondsSinceEpoch}'),
+            padding: EdgeInsets.all(16),
+            height: 88,
+            width: double.infinity,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(
+                  'Pomodoro Timer',
+                  style: ShadTheme.of(context).textTheme.h3,
+                ),
+                Text(
+                  '${_remainingTime.inMinutes}:${(_remainingTime.inSeconds % 60).toString().padLeft(2, '0')}',
+                  style: ShadTheme.of(context).textTheme.h3,
+                ),
+              ],
+            ),
+          ),
+        ),
+    ];
+
+    return GestureDetector(
+      onVerticalDragUpdate: (details) {
+        setState(() {
+          if (details.primaryDelta! < 0) {
+            // Swipe up
+            _currentHeaderIndex = (_currentHeaderIndex + 1) % headerCards.length;
+          } else if (details.primaryDelta! > 0) {
+            // Swipe down
+            _currentHeaderIndex =
+                (_currentHeaderIndex - 1 + headerCards.length) % headerCards.length;
+          }
+        });
+      },
+      child: AnimatedSwitcher(
+        duration: Duration(milliseconds: 300),
+        child: headerCards[_currentHeaderIndex],
+      ),
+    );
+  }
+
+  int _selectedIndex = 0;
+
+  Widget _buildNavItem(int index, IconData icon, {required bool isCenter}) {
+    final double size = isCenter ? 60 : 48;
+    final double iconSize = isCenter ? 24 : 20;
+
+    return GestureDetector(
+      onTap: () {
+        setState(() {
+          _selectedIndex = index;
+
+          if (index == 1) {
+            _showAddTodoBottomSheet();
+          } else if (index == 2) {
+            showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+              ),
+              builder: (context) => ConstrainedBox(
+                constraints: BoxConstraints(
+                  maxHeight: MediaQuery.of(context).size.height * 0.9,
+                ),
+                child: SettingScreen(
+                  onClose: () {
+                    _loadInitialData();
+                    Navigator.pop(context);
+                  },
+                ),
+              ),
+            );
+          }
+        });
+      },
+      child: Container(
+        width: size,
+        height: size,
+        decoration: BoxDecoration(
+          shape: BoxShape.circle,
+          border: Border.all(
+            color: ShadTheme.of(context).colorScheme.border,
+            width: 1,
+          ),
+          color: _selectedIndex == index
+              ? ShadTheme.of(context).colorScheme.card
+              : ShadTheme.of(context).colorScheme.card,
+        ),
+        child: Icon(
+          icon,
+          size: iconSize,
+          color: ShadTheme.of(context).colorScheme.foreground,
+        ),
+      ),
+    );
+  }
+
+  @override
+  void dispose() {
+    _timerSubscription.cancel();
+    super.dispose();
+  }
+
   @override
   Widget build(BuildContext context) {
-    // Calculate incomplete tasks count.
-    final int incompleteTasks = todos.where((todo) => !todo.isDone).length;
-
     return Scaffold(
       body: SingleChildScrollView(
         child: Padding(
@@ -326,170 +639,11 @@ class _HomeState extends State<Home> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // Header Card with flip functionality.
-              GestureDetector(
-                onTap: () {
-                  setState(() {
-                    _showInfo = !_showInfo;
-                  });
-                },
-                child: AnimatedSwitcher(
-                  duration: Duration(milliseconds: 600),
-                  transitionBuilder:
-                      (Widget child, Animation<double> animation) {
-                    final rotate =
-                        Tween(begin: pi, end: 0.0).animate(animation);
-                    return AnimatedBuilder(
-                      animation: rotate,
-                      child: child,
-                      builder: (context, child) {
-                        // Determine if the widget is the backside by checking its key.
-                        bool isBack = child!.key == ValueKey('back');
-                        // Reverse rotation for backside to create a flip effect.
-                        double rotationValue =
-                            isBack ? -rotate.value : rotate.value;
-                        return Transform(
-                          transform: Matrix4.identity()
-                            ..setEntry(3, 2, 0.001) // add perspective
-                            ..rotateX(rotationValue),
-                          alignment: Alignment.center,
-                          child: child,
-                        );
-                      },
-                    );
-                  },
-                  child: _showInfo
-                      ? ShadCard(
-                          key: ValueKey('back'),
-                          padding: EdgeInsets.all(16),
-                          height: 88,
-                          width: double.infinity,
-                          child: Row(
-                            children: [
-                              Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      'Hello $_enteredName',
-                                      style: ShadTheme.of(context).textTheme.h3,
-                                    ),
-                                    RichText(
-                                      text: TextSpan(
-                                        style: ShadTheme.of(context)
-                                            .textTheme
-                                            .muted,
-                                        children: [
-                                          const TextSpan(text: 'You have '),
-                                          TextSpan(
-                                            text: '$incompleteTasks task(s)',
-                                            style: TextStyle(
-                                              color: ShadTheme.of(context)
-                                                  .colorScheme
-                                                  .primary,
-                                              fontWeight: FontWeight.bold,
-                                            ),
-                                          ),
-                                          const TextSpan(text: ' to complete'),
-                                        ],
-                                      ),
-                                    )
-                                  ]),
-                              Spacer(),
-                              ShadButton.outline(
-                                child: Icon(LucideIcons.settings2),
-                                onPressed: () {
-                                  showModalBottomSheet(
-                                      context: context,
-                                      isScrollControlled: true,
-                                      shape: RoundedRectangleBorder(
-                                        borderRadius: BorderRadius.vertical(
-                                            top: Radius.circular(16.0)),
-                                      ),
-                                      builder: (context) => ConstrainedBox(
-                                            constraints: BoxConstraints(
-                                              maxHeight: MediaQuery.of(context)
-                                                      .size
-                                                      .height *
-                                                  0.9,
-                                            ),
-                                            child: SettingScreen(
-                                              onClose: () {
-                                                _loadInitialData();
-                                                Navigator.pop(context);
-                                              },
-                                            ),
-                                          ));
-                                },
-                              )
-                            ],
-                          ),
-                        )
-                      : ShadCard(
-                          key: ValueKey('front'),
-                          padding: EdgeInsets.all(16),
-                          height: 88,
-                          width: double.infinity,
-                          child: Container(
-                            child: Row(
-                              mainAxisAlignment: MainAxisAlignment.center,
-                              crossAxisAlignment: CrossAxisAlignment.center,
-                              children: [
-                                Row(
-                                  children: [
-                                    Text(
-                                      _shortDateFormatter
-                                          .format(DateTime.now()),
-                                      style: ShadTheme.of(context).textTheme.h3,
-                                    ),
-                                    const SizedBox(width: 8),
-                                    Container(
-                                      width: 16,
-                                      height: 16,
-                                      decoration: BoxDecoration(
-                                        shape: BoxShape.circle,
-                                        color: ShadTheme.of(context)
-                                            .colorScheme
-                                            .primary,
-                                      ),
-                                    ),
-                                  ],
-                                ),
-                                const Spacer(),
-                                _buildDateDisplay(DateTime.now()),
-                                ShadButton.outline(
-                                    child: Icon(LucideIcons.settings2),
-                                    onPressed: () {
-                                      showModalBottomSheet(
-                                          context: context,
-                                          isScrollControlled: true,
-                                          shape: RoundedRectangleBorder(
-                                            borderRadius: BorderRadius.vertical(
-                                                top: Radius.circular(16.0)),
-                                          ),
-                                          builder: (context) => ConstrainedBox(
-                                                constraints: BoxConstraints(
-                                                  maxHeight:
-                                                      MediaQuery.of(context)
-                                                              .size
-                                                              .height *
-                                                          0.9,
-                                                ),
-                                                child:
-                                                    SettingScreen(onClose: () {
-                                                  Navigator.pop(context);
-                                                }),
-                                              ));
-                                    })
-                              ],
-                            ),
-                          ),
-                        ),
-                ),
-              ),
+              _buildHeaderCard(),
               SizedBox(height: 16),
-             pinnedTodos.isNotEmpty ?
-              Text('Pinned Task', style: ShadTheme.of(context).textTheme.muted):
-              SizedBox(height: 8),
+              pinnedTodos.isNotEmpty
+                  ? Text('Pinned Task', style: ShadTheme.of(context).textTheme.muted)
+                  : SizedBox(height: 8),
               if (pinnedTodos.isNotEmpty)
                 StaggeredGrid.count(
                   crossAxisCount: 2,
@@ -507,7 +661,7 @@ class _HomeState extends State<Home> {
                           columnMainAxisAlignment: MainAxisAlignment.start,
                           leading: ShadCheckbox(
                             value: todo.isDone,
-                            onChanged: (value) {
+                            onChanged: (bool? value) async {
                               _toggleTodoCompletion(todo);
                             },
                           ),
@@ -529,8 +683,7 @@ class _HomeState extends State<Home> {
                     },
                   ),
                 )
-              else
-                if (unpinnedTodos.isNotEmpty && pinnedTodos.isEmpty)
+              else if (unpinnedTodos.isNotEmpty && pinnedTodos.isEmpty)
                 Center(
                   child: Text(
                     "You can pin a task to keep it at the top for quick access.",
@@ -538,8 +691,8 @@ class _HomeState extends State<Home> {
                   ),
                 ),
               SizedBox(height: 16),
-              
-               if (unpinnedTodos.isNotEmpty) Text('Task', style: ShadTheme.of(context).textTheme.muted),
+              if (unpinnedTodos.isNotEmpty)
+                Text('Task', style: ShadTheme.of(context).textTheme.muted),
               SizedBox(height: 8),
               if (unpinnedTodos.isNotEmpty)
                 StaggeredGrid.count(
@@ -562,7 +715,7 @@ class _HomeState extends State<Home> {
                               padding: const EdgeInsets.all(8.0),
                               leading: ShadCheckbox(
                                 value: todo.isDone,
-                                onChanged: (value) {
+                                onChanged: (bool? value) async {
                                   _toggleTodoCompletion(todo);
                                 },
                               ),
@@ -591,30 +744,41 @@ class _HomeState extends State<Home> {
                   ),
                 ),
               if (unpinnedTodos.isEmpty && pinnedTodos.isEmpty)
-              Center(child: 
-                Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Text(
-                      "Oh no!!! 👽🛸 Alien here to kidnap a lazy person. Please escape by:",
-                      textAlign: TextAlign.center,
-                      style: ShadTheme.of(context).textTheme.muted,
-                    ),
-                    SizedBox(height: 16),
-                    ShadButton(
-                      onPressed: _showAddTodoBottomSheet,
-                      child: Text("Add Task"),
-                    ),
-                  ],
-                ),)
+                Center(
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Text(
+                        "Oh no!!! 👽🛸 Alien here to kidnap a lazy person. Please escape by:",
+                        textAlign: TextAlign.center,
+                        style: ShadTheme.of(context).textTheme.muted,
+                      ),
+                      SizedBox(height: 16),
+                      ShadButton(
+                        onPressed: _showAddTodoBottomSheet,
+                        child: Text("Add Task"),
+                      ),
+                    ],
+                  ),
+                ),
             ],
           ),
         ),
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _showAddTodoBottomSheet,
-        child: Icon(Icons.add),
+      bottomNavigationBar: Container(
+       
+        child: Padding(
+          padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 20),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              _buildNavItem(0, Icons.collections, isCenter: false),
+              _buildNavItem(1, Icons.add_circle_outline, isCenter: true),
+              _buildNavItem(2, LucideIcons.settings2, isCenter: false),
+            ],
+          ),
+        ),
       ),
     );
   }
