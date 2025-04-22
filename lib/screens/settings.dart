@@ -4,8 +4,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import '../helpers/theme.dart';
 import 'account_settings.dart';
-import 'package:forui/forui.dart';
-import 'package:forui/assets.dart';
 
 class SettingScreen extends StatefulWidget {
   final VoidCallback onClose;

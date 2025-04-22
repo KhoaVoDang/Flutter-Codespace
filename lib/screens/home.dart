@@ -12,7 +12,6 @@ import 'edittodo.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'pomodoro.dart';
 import '/services/pomodoro_service.dart';
-import 'package:forui/forui.dart';
 import 'package:flip_card_swiper/flip_card_swiper.dart';
 import '../widgets/collection_card.dart';
 import '../widgets/todo_row.dart';
