@@ -4,6 +4,8 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
 import '../helpers/theme.dart';
 import 'account_settings.dart';
+import 'package:forui/forui.dart';
+import 'package:forui/assets.dart';
 
 class SettingScreen extends StatefulWidget {
   final VoidCallback onClose;
@@ -128,6 +130,60 @@ class _SettingScreenState extends State<SettingScreen> {
     }).toList();
   }
 
+  Widget sectionTitle(String text) {
+    final theme = ShadTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 32, bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(text, style: theme.textTheme.h4?.copyWith(fontWeight: FontWeight.bold)),
+          SizedBox(height: 8),
+          Divider(thickness: 1, color: theme.colorScheme.border),
+        ],
+      ),
+    );
+  }
+
+  Widget settingRow({
+    required String title,
+    String? subtitle,
+    required Widget trailing,
+    bool showDivider = true,
+  }) {
+    final theme = ShadTheme.of(context);
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          child: Row(
+            crossAxisAlignment: subtitle != null ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(title, style: theme.textTheme.p?.copyWith(fontWeight: FontWeight.w500)),
+                    if (subtitle != null)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 2),
+                        child: Text(
+                          subtitle,
+                          style: theme.textTheme.muted?.copyWith(fontSize: 13),
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              trailing,
+            ],
+          ),
+        ),
+        if (showDivider) Divider(height: 1, color: theme.colorScheme.border),
+      ],
+    );
+  }
+
   @override
   void dispose() {
     _nameController.dispose();
@@ -140,8 +196,10 @@ class _SettingScreenState extends State<SettingScreen> {
     return ClipRRect(
       borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       child: Scaffold(
+        backgroundColor: theme.colorScheme.background,
         appBar: AppBar(
           backgroundColor: theme.colorScheme.background,
+          elevation: 0,
           leading: IconButton(
             icon: Icon(LucideIcons.x),
             color: theme.colorScheme.mutedForeground,
@@ -150,128 +208,26 @@ class _SettingScreenState extends State<SettingScreen> {
           title: Text('Settings', style: theme.textTheme.h4),
         ),
         body: Padding(
-          padding:
-              EdgeInsets.only(bottom: MediaQuery.of(context).viewInsets.bottom),
+          padding: EdgeInsets.only(
+            left: 24, right: 24, bottom: MediaQuery.of(context).viewInsets.bottom),
           child: ListView(
-            padding: EdgeInsets.symmetric(horizontal: 16),
             children: [
-              // General Settings Section
-              Text("General Settings", style: theme.textTheme.p),
-              SizedBox(height: 8),
-              GestureDetector(
-                onTap: () {
-                  showModalBottomSheet(
-                    context: context,
-                    isScrollControlled: true,
-                    backgroundColor: Colors.transparent,
-                    builder: (context) => Container(
-                      height: MediaQuery.of(context).size.height * 0.9,
-                      child: AccountSettingsScreen(
-                        onClose: () => Navigator.pop(context),
-                      ),
-                    ),
-                  );
-                },
-                child: ShadCard(
-                  height: 56,
-                  rowCrossAxisAlignment: CrossAxisAlignment.center,
-                  columnMainAxisAlignment: MainAxisAlignment.start,
-                  width: double.infinity,
-                  padding: EdgeInsets.all(8),
-                  child: Text("Your Name", style: theme.textTheme.muted),
-                  trailing: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 120,
-                        child: ShadInput(
-                          controller: _nameController,
-                          textAlign: TextAlign.end,
-                          style: theme.textTheme.p,
-                          enabled: false, // Make input read-only
-                          decoration: ShadDecoration(
-                            color: theme.colorScheme.card,
-                            focusedBorder: ShadBorder.none,
-                            border: ShadBorder.none,
-                            secondaryBorder: ShadBorder.none,
-                            disableSecondaryBorder: true,
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 8),
-                      Icon(Icons.arrow_forward_ios, size: 16),
-                    ],
-                  ),
+              sectionTitle("Preferences"),
+              settingRow(
+                title: "Appearance",
+                subtitle: "Switch between light and dark mode.",
+                trailing: Switch(
+                  value: Provider.of<ThemeNotifier>(context).isDarkTheme,
+                  onChanged: (value) {
+                    Provider.of<ThemeNotifier>(context, listen: false).toggleTheme();
+                  },
                 ),
               ),
-              SizedBox(height: 16),
-              ShadCard(
-                height: 56,
-                rowCrossAxisAlignment: CrossAxisAlignment.center,
-                columnMainAxisAlignment: MainAxisAlignment.center,
-                width: double.infinity,
-                padding: EdgeInsets.all(8),
-                child: Text("Dark Mode", style: theme.textTheme.muted),
-                trailing: GestureDetector(
-                  onTap: () =>
-                      Provider.of<ThemeNotifier>(context, listen: false)
-                          .toggleTheme(),
-                  child: Container(
-                    width: 70,
-                    height: 40,
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: theme.colorScheme.border,
-                        width: 1.0,
-                      ),
-                      borderRadius: BorderRadius.circular(25),
-                      color: theme.colorScheme.background,
-                    ),
-                    child: Row(
-                      mainAxisAlignment:
-                          Provider.of<ThemeNotifier>(context).isDarkTheme
-                              ? MainAxisAlignment.end
-                              : MainAxisAlignment.start,
-                      children: [
-                        Container(
-                          width: 32,
-                          height: 32,
-                          margin: const EdgeInsets.all(2),
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: theme.colorScheme.muted,
-                          ),
-                          child: Provider.of<ThemeNotifier>(context).isDarkTheme
-                              ? Icon(
-                                  LucideIcons.moon,
-                                  size: 20,
-                                  color: theme.colorScheme.foreground,
-                                )
-                              : Icon(
-                                  LucideIcons.sun,
-                                  size: 20,
-                                  color: theme.colorScheme.foreground,
-                                ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ),
-              ),
-              SizedBox(height: 24),
-
-              // Theme Settings Section
-              Text("Theme Settings", style: theme.textTheme.p),
-              SizedBox(height: 8),
-              ShadCard(
-                height: 64,
-                rowCrossAxisAlignment: CrossAxisAlignment.center,
-                columnMainAxisAlignment: MainAxisAlignment.center,
-                width: double.infinity,
-                padding: EdgeInsets.all(8),
-                child: Text("Theme", style: theme.textTheme.muted),
+              settingRow(
+                title: "Theme Color",
+                subtitle: "Change the accent color of the app.",
                 trailing: ShadSelect<String>(
-                  placeholder: const Text('Select a theme'),
+                  placeholder: const Text('Select a color'),
                   options: getThemeOptions(theme),
                   initialValue: selectedColor,
                   onChanged: (value) {
@@ -304,18 +260,10 @@ class _SettingScreenState extends State<SettingScreen> {
                   },
                 ),
               ),
-              SizedBox(height: 24),
-
-              // Pomodoro Settings Section
-              Text("Pomodoro Settings", style: theme.textTheme.p),
-              SizedBox(height: 8),
-              ShadCard(
-                height: 64,
-                rowCrossAxisAlignment: CrossAxisAlignment.center,
-                columnMainAxisAlignment: MainAxisAlignment.center,
-                width: double.infinity,
-                padding: EdgeInsets.all(8),
-                child: Text("Pomodoro Time", style: theme.textTheme.muted),
+              sectionTitle("Pomodoro"),
+              settingRow(
+                title: "Pomodoro Time",
+                subtitle: "Set the duration for each Pomodoro session.",
                 trailing: ShadSelect<int>(
                   placeholder: const Text('Select time'),
                   options: List.generate(
@@ -332,19 +280,12 @@ class _SettingScreenState extends State<SettingScreen> {
                       _savePomodoroSettings();
                     });
                   },
-                  selectedOptionBuilder: (context, value) {
-                    return Text('$value mins');
-                  },
+                  selectedOptionBuilder: (context, value) => Text('$value mins'),
                 ),
               ),
-              SizedBox(height: 16),
-              ShadCard(
-                height: 64,
-                rowCrossAxisAlignment: CrossAxisAlignment.center,
-                columnMainAxisAlignment: MainAxisAlignment.center,
-                width: double.infinity,
-                padding: EdgeInsets.all(8),
-                child: Text("Break Time", style: theme.textTheme.muted),
+              settingRow(
+                title: "Break Time",
+                subtitle: "Set the duration for short breaks.",
                 trailing: ShadSelect<int>(
                   placeholder: const Text('Select time'),
                   options: List.generate(
@@ -361,19 +302,12 @@ class _SettingScreenState extends State<SettingScreen> {
                       _savePomodoroSettings();
                     });
                   },
-                  selectedOptionBuilder: (context, value) {
-                    return Text('$value mins');
-                  },
+                  selectedOptionBuilder: (context, value) => Text('$value mins'),
                 ),
               ),
-              SizedBox(height: 16),
-              ShadCard(
-                height: 64,
-                rowCrossAxisAlignment: CrossAxisAlignment.center,
-                columnMainAxisAlignment: MainAxisAlignment.center,
-                width: double.infinity,
-                padding: EdgeInsets.all(8),
-                child: Text("Long Break Time", style: theme.textTheme.muted),
+              settingRow(
+                title: "Long Break Time",
+                subtitle: "Set the duration for long breaks.",
                 trailing: ShadSelect<int>(
                   placeholder: const Text('Select time'),
                   options: List.generate(
@@ -390,49 +324,54 @@ class _SettingScreenState extends State<SettingScreen> {
                       _savePomodoroSettings();
                     });
                   },
-                  selectedOptionBuilder: (context, value) {
-                    return Text('$value mins');
-                  },
+                  selectedOptionBuilder: (context, value) => Text('$value mins'),
                 ),
               ),
-
-              // Task Management Section
-              SizedBox(height: 24),
-              // Text("Task Management", style: theme.textTheme.h4),
-              // SizedBox(height: 8),
-              // ShadCard(
-              //   height: 56,
-              //   rowCrossAxisAlignment: CrossAxisAlignment.center,
-              //   columnMainAxisAlignment: MainAxisAlignment.center,
-              //   width: double.infinity,
-              //   padding: EdgeInsets.all(8),
-              //   child: Text("Delete All Tasks", style: theme.textTheme.muted),
-              //   trailing: ShadButton.destructive(
-              //     onPressed: () async {
-              //       final confirm = await showDialog<bool>(
-              //         context: context,
-              //         builder: (context) => AlertDialog(
-              //           title: Text("Confirm Deletion"),
-              //           content: Text("Are you sure you want to delete all tasks? This action cannot be undone."),
-              //           actions: [
-              //             TextButton(
-              //               onPressed: () => Navigator.of(context).pop(false),
-              //               child: Text("Cancel"),
-              //             ),
-              //             TextButton(
-              //               onPressed: () => Navigator.of(context).pop(true),
-              //               child: Text("Delete"),
-              //             ),
-              //           ],
-              //         ),
-              //       );
-              //       if (confirm == true) {
-              //         await _deleteAllTasks();
-              //       }
-              //     },
-              //     child: Text("Delete"),
-              //   ),
-              // ),
+              sectionTitle("Account"),
+              settingRow(
+                title: "Your Name",
+                subtitle: "Tap to edit your name.",
+                trailing: GestureDetector(
+                  onTap: () {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (context) => Container(
+                        height: MediaQuery.of(context).size.height * 0.9,
+                        child: AccountSettingsScreen(
+                          onClose: () => Navigator.pop(context),
+                        ),
+                      ),
+                    );
+                  },
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Container(
+                        width: 120,
+                        child: ShadInput(
+                          controller: _nameController,
+                          textAlign: TextAlign.end,
+                          style: theme.textTheme.p,
+                          enabled: false,
+                          decoration: ShadDecoration(
+                            color: theme.colorScheme.card,
+                            focusedBorder: ShadBorder.none,
+                            border: ShadBorder.none,
+                            secondaryBorder: ShadBorder.none,
+                            disableSecondaryBorder: true,
+                          ),
+                        ),
+                      ),
+                      SizedBox(width: 8),
+                      Icon(Icons.arrow_forward_ios, size: 16, color: theme.colorScheme.muted),
+                    ],
+                  ),
+                ),
+                showDivider: false,
+              ),
+              SizedBox(height: 32),
             ],
           ),
         ),

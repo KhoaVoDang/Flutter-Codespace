@@ -5,7 +5,6 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'dart:typed_data';
-
 import 'dart:html' as html;
 
 class AccountSettingsScreen extends StatefulWidget {
@@ -213,14 +212,75 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
     }
   }
 
+  Widget sectionTitle(String text) {
+    final theme = ShadTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 32, bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(text, style: theme.textTheme.h4?.copyWith(fontWeight: FontWeight.bold)),
+          SizedBox(height: 8),
+          Divider(thickness: 1, color: theme.colorScheme.border),
+        ],
+      ),
+    );
+  }
+
+  Widget settingRow({
+    required String title,
+    String? subtitle,
+    required Widget trailing,
+    bool showDivider = true,
+    GestureTapCallback? onTap,
+  }) {
+    final theme = ShadTheme.of(context);
+    return Column(
+      children: [
+        InkWell(
+          borderRadius: BorderRadius.circular(8),
+          onTap: onTap,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Row(
+              crossAxisAlignment: subtitle != null ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: theme.textTheme.p?.copyWith(fontWeight: FontWeight.w500)),
+                      if (subtitle != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            subtitle,
+                            style: theme.textTheme.muted?.copyWith(fontSize: 13),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                trailing,
+              ],
+            ),
+          ),
+        ),
+        if (showDivider) Divider(height: 1, color: theme.colorScheme.border),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final theme = ShadTheme.of(context);
     return ClipRRect(
       borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
       child: Scaffold(
+        backgroundColor: theme.colorScheme.background,
         appBar: AppBar(
           backgroundColor: theme.colorScheme.background,
+          elevation: 0,
           leading: IconButton(
             icon: Icon(LucideIcons.x),
             color: theme.colorScheme.mutedForeground,
@@ -231,96 +291,86 @@ class _AccountSettingsScreenState extends State<AccountSettingsScreen> {
         body: _isLoading
             ? Center(child: CircularProgressIndicator())
             : SingleChildScrollView(
-                padding: EdgeInsets.symmetric(horizontal: 16),
+                padding: EdgeInsets.symmetric(horizontal: 24),
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    SizedBox(height: 16),
-                    
-                    Row(
-                      children: [
-Stack(
+                    sectionTitle("Profile"),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      child: Row(
                         children: [
-                          CircleAvatar(
-                            radius: 40,
-                            backgroundImage: _avatarUrl != null
-                                ? NetworkImage(_avatarUrl!)
-                                : null,
-                            child: _avatarUrl == null
-                                ? Icon(LucideIcons.user, size: 40)
-                                : null,
+                          Stack(
+                            children: [
+                              CircleAvatar(
+                                radius: 40,
+                                backgroundImage: _avatarUrl != null
+                                    ? NetworkImage(_avatarUrl!)
+                                    : null,
+                                child: _avatarUrl == null
+                                    ? Icon(LucideIcons.user, size: 40)
+                                    : null,
+                              ),
+                              Positioned(
+                                bottom: 0,
+                                right: 0,
+                                child: ShadButton.secondary(
+                                  size: ShadButtonSize.sm,
+                                  onPressed: _uploadAvatar,
+                                  child: Icon(LucideIcons.upload, size: 12),
+                                ),
+                              ),
+                            ],
                           ),
-                          Positioned(
-                            bottom: 0,
-                            right: 0,
-                            child: ShadButton.secondary(
-                              size: ShadButtonSize.sm,
-                              onPressed: _uploadAvatar,
-                              child: Icon(LucideIcons.upload, size: 10),
+                          SizedBox(width: 20),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text('Preferred name', style: theme.textTheme.muted),
+                                SizedBox(height: 8),
+                                ShadInput(
+                                  controller: _nameController,
+                                  placeholder: Text('Enter your preferred name'),
+                                ),
+                              ],
                             ),
                           ),
                         ],
                       ),
-                      SizedBox(width: 8),
-                      Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        mainAxisSize: MainAxisSize.min,
-                       
-                        children: [
-                         Text('Preferred name', style: theme.textTheme.muted),
-                    SizedBox(height: 8),
-                    Container
-                      (width: 200,
-                      child:
-                    ShadInput(
-                      controller: _nameController,
-                     
-                        placeholder: Text('Enter your preferred name'),  
-                    ),)
-                        ],
-                      )
-
-                    ]),
-                    // ShadButton.ghost(
-                    //   onPressed: _uploadAvatar,
-                    //   child: Text('Change Avatar'),
-                    // ),
-                    // Avatar section
-                  
-             
-                    // Preferred name section
-                   
+                    ),
+                    SizedBox(height: 16),
                     ShadButton(
                       width: double.infinity,
                       onPressed: _updateProfile,
                       child: Text('Save Changes'),
                     ),
-                    SizedBox(height: 24),
-                    // Email and password section
-                    ShadCard(
-                      height: 56,
-                      rowCrossAxisAlignment: CrossAxisAlignment.center,
-                      columnMainAxisAlignment: MainAxisAlignment.start,
-                      width: double.infinity,
-                      padding: EdgeInsets.all(8),
-                      child: Text("Change Email", style: theme.textTheme.muted),
-                      trailing: Icon(Icons.arrow_forward_ios, size: 16),
+                    sectionTitle("Security"),
+                    settingRow(
+                      title: "Change Email",
+                      subtitle: "Update your email address.",
+                      trailing: Icon(Icons.arrow_forward_ios, size: 16, color: theme.colorScheme.muted),
+                      onTap: () {
+                        // TODO: Implement change email
+                      },
                     ),
-                    SizedBox(height: 16),
-                    ShadCard(
-                      height: 56,
-                      rowCrossAxisAlignment: CrossAxisAlignment.center,
-                      columnMainAxisAlignment: MainAxisAlignment.start,
-                      width: double.infinity,
-                      padding: EdgeInsets.all(8),
-                      child: Text("Change Password", style: theme.textTheme.muted),
-                      trailing: Icon(Icons.arrow_forward_ios, size: 16),
+                    settingRow(
+                      title: "Change Password",
+                      subtitle: "Update your account password.",
+                      trailing: Icon(Icons.arrow_forward_ios, size: 16, color: theme.colorScheme.muted),
+                      onTap: () {
+                        // TODO: Implement change password
+                      },
                     ),
-                    SizedBox(height: 16),
-                    ShadButton.destructive(
-                      onPressed: _logOut,
-                      child: Text("Log Out"),
+                    sectionTitle("Session"),
+                    settingRow(
+                      title: "Log Out",
+                      subtitle: "Sign out of your account.",
+                      trailing: Icon(LucideIcons.logOut, color: theme.colorScheme.destructive),
+                      showDivider: false,
+                      onTap: _logOut,
                     ),
+                    SizedBox(height: 32),
                   ],
                 ),
               ),

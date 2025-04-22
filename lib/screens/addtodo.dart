@@ -8,7 +8,8 @@ import 'package:supabase_flutter/supabase_flutter.dart';
 
 class AddTodoScreen extends StatefulWidget {
   final VoidCallback onAdd;
-  const AddTodoScreen({Key? key, required this.onAdd}) : super(key: key);
+  final String? collectionId; // <-- Add this
+  const AddTodoScreen({Key? key, required this.onAdd, this.collectionId}) : super(key: key);
 
   @override
   State<AddTodoScreen> createState() => _AddTodoScreenState();
@@ -43,7 +44,8 @@ class _AddTodoScreenState extends State<AddTodoScreen> {
         'is_pinned': _isPinned,
         'tag': _selectedTag,
         'created_at': DateTime.now().toIso8601String(),
-        'user_id': currentUser.id, // Add the user_id
+        'user_id': currentUser.id,
+        'collection_id': widget.collectionId, // <-- Assign to collection
       });
 
       widget.onAdd();

@@ -1,6 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
-import 'dart:math';
 import 'package:flutter/material.dart';
 import 'package:shadcn_ui/shadcn_ui.dart';
 import '/models/todo.dart';
@@ -14,6 +12,11 @@ import 'edittodo.dart';
 import 'package:lucide_icons_flutter/lucide_icons.dart';
 import 'pomodoro.dart';
 import '/services/pomodoro_service.dart';
+import 'package:forui/forui.dart';
+import 'package:flip_card_swiper/flip_card_swiper.dart';
+import '../widgets/collection_card.dart';
+import '../widgets/todo_row.dart';
+import '../widgets/pomodoro_flip_timer.dart';
 
 class Home extends StatefulWidget {
   const Home({Key? key}) : super(key: key);
@@ -24,7 +27,7 @@ class Home extends StatefulWidget {
 }
 
 class _HomeState extends State<Home> {
-  String _enteredName = '';
+  String newcollection = '';
   List<Todo> todos = [];
   String _selectedTag = 'All';
   int _selectedGrid = 1;
@@ -33,38 +36,187 @@ class _HomeState extends State<Home> {
   final PomodoroService _pomodoroService = PomodoroService();
   late StreamSubscription<Duration> _timerSubscription;
   Duration _remainingTime = Duration.zero;
+  bool _minimizedPomodoro = false;
+  final ValueNotifier<Duration> _minimizedPomodoroTimeNotifier = ValueNotifier(Duration.zero);
+  Todo? _minimizedPomodoroTodo;
+  Timer? _minimizedPomodoroTimer;
+  PomodoroMode _minimizedPomodoroMode = PomodoroMode.pomodoro;
+  final TextEditingController _collectionNameController = TextEditingController();
 
   static final _shortDateFormatter = DateFormat('EEE');
   static final _monthDayFormatter = DateFormat('MMM d');
   static final _fullmonthDayFormatter = DateFormat('d');
   static final _yearFormatter = DateFormat('y');
 
+  List<Map<String, dynamic>> collections = [];
+  String? selectedCollectionId;
+  String? selectedCollectionName;
+
+  String? _userName;
+  String? _userAvatarUrl;
+
   Future<void> _loadInitialData() async {
-    await Future.wait([_loadName(), _loadTodos()]);
+    await Future.wait([_loadUserProfile(), _loadTodos()]);
+  }
+
+  Future<void> _loadTodos() async {
+    // Placeholder implementation for loading todos
+    setState(() {
+      todos = []; // Replace with actual logic to load todos
+    });
+  }
+
+  Future<void> _loadUserProfile() async {
+    final supabase = Supabase.instance.client;
+    final currentUser = supabase.auth.currentUser;
+    if (currentUser == null) return;
+    try {
+      final response = await supabase
+          .from('profiles')
+          .select('preferred_name, avatar_url')
+          .eq('id', currentUser.id)
+          .single();
+      if (response != null && response is Map) {
+        setState(() {
+          _userName = response['preferred_name'] ?? currentUser.email ?? 'User';
+          _userAvatarUrl = response['avatar_url'];
+        });
+      } else {
+        setState(() {
+          _userName = currentUser.email ?? 'User';
+          _userAvatarUrl = null;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _userName = currentUser.email ?? 'User';
+        _userAvatarUrl = null;
+      });
+    }
+  }
+
+  // Helper to get stats for a collection
+  Future<Map<String, dynamic>> _getCollectionStats(String collectionId) async {
+    final supabase = Supabase.instance.client;
+    final currentUser = supabase.auth.currentUser;
+    if (currentUser == null) return {'total': 0, 'done': 0};
+    final notes = await supabase
+        .from('notes')
+        .select('is_done')
+        .eq('user_id', currentUser.id)
+        .eq('collection_id', collectionId);
+    if (notes is! List) return {'total': 0, 'done': 0};
+    final total = notes.length;
+    final done = notes.where((n) => n['is_done'] == true).length;
+    return {'total': total, 'done': done};
+  }
+
+  // Cache for collection stats to avoid repeated queries
+  final Map<String, Map<String, dynamic>> _collectionStatsCache = {};
+
+  Future<void> _refreshCollectionStats() async {
+    _collectionStatsCache.clear();
+    for (final c in collections) {
+      final stats = await _getCollectionStats(c['id']);
+      _collectionStatsCache[c['id']] = stats;
+    }
+    if (mounted) setState(() {});
   }
 
   @override
   void initState() {
     super.initState();
-    _loadInitialData();
-    _timerSubscription = _pomodoroService.timerStream.listen((time) {
-      setState(() {
-        _remainingTime = time;
-      });
-    });
+    _loadCollections();
+    _loadUserProfile(); // <-- load user profile from Supabase
   }
 
-  Future<void> _loadName() async {
-    final prefs = await SharedPreferences.getInstance();
-    setState(() {
-      _enteredName = prefs.getString('entered_value') ?? '';
-      if (_enteredName.isNotEmpty) {
-        _enteredName = _enteredName.replaceFirst(
-          _enteredName[0],
-          _enteredName[0].toUpperCase(),
+  Future<void> _loadCollections() async {
+    final supabase = Supabase.instance.client;
+    try {
+      final currentUser = supabase.auth.currentUser;
+      if (currentUser == null) throw 'No user logged in';
+
+      final response = await supabase
+          .from('collections')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .order('created_at', ascending: false);
+
+      if (response is! List) throw 'Invalid response format';
+
+      setState(() {
+        collections = List<Map<String, dynamic>>.from(response);
+        selectedCollectionId = null;
+      });
+
+      await _refreshCollectionStats(); // <-- fetch stats after collections loaded
+    } catch (e) {
+      print('Error loading collections: $e');
+      if (mounted) {
+        ShadToaster.of(context).show(
+          ShadToast.destructive(
+            description: Text('Failed to load collections: $e'),
+          ),
         );
       }
+    }
+  }
+
+  Future<void> _loadTodosForCollection(String collectionId) async {
+    final supabase = Supabase.instance.client;
+    try {
+      final currentUser = supabase.auth.currentUser;
+      if (currentUser == null) throw 'No user logged in';
+
+      final response = await supabase
+          .from('notes')
+          .select('*')
+          .eq('user_id', currentUser.id)
+          .eq('collection_id', collectionId)
+          .order('created_at', ascending: false);
+
+      if (response is! List) throw 'Invalid response format';
+
+      setState(() {
+        todos = response.map((item) {
+          final data = {
+            'id': item['id'].toString(),
+            'created_at': item['created_at'],
+            'text': item['text'] ?? '',
+            'is_done': item['is_done'] ?? false,
+            'is_pinned': item['is_pinned'] ?? false,
+            'tag': item['tag'] ?? '',
+          };
+          return Todo.fromJson(data);
+        }).toList();
+      });
+    } catch (e) {
+      print('Error loading todos: $e');
+      if (mounted) {
+        ShadToaster.of(context).show(
+          ShadToast.destructive(
+            description: Text('Failed to load tasks: $e'),
+          ),
+        );
+      }
+    }
+  }
+
+  void _onCollectionTap(Map<String, dynamic> collection) async {
+    setState(() {
+      selectedCollectionId = collection['id'];
+      selectedCollectionName = collection['name'];
     });
+    await _loadTodosForCollection(collection['id']);
+  }
+
+  void _onBackToCollections() async {
+    setState(() {
+      selectedCollectionId = null;
+      selectedCollectionName = null;
+      todos = [];
+    });
+    await _loadCollections(); // <-- reload collections and stats
   }
 
   void _showAddTodoBottomSheet() {
@@ -83,7 +235,10 @@ class _HomeState extends State<Home> {
             constraints: BoxConstraints(
               maxHeight: MediaQuery.of(context).size.height * 0.5,
             ),
-            child: AddTodoScreen(onAdd: _loadTodos),
+            child: AddTodoScreen(
+              onAdd: () => _loadTodosForCollection(selectedCollectionId!),
+              collectionId: selectedCollectionId,
+            ),
           ),
         );
       },
@@ -130,10 +285,8 @@ class _HomeState extends State<Home> {
                             Text(todo.isPinned ? "Unpin" : "Pin"),
                           ],
                         ),
-                        onPressed: () {
-                          setState(() {
-                            todo.isPinned = !todo.isPinned;
-                          });
+                        onPressed: () async {
+                          await _toggleTodoPin(todo);
                           Navigator.pop(context);
                         },
                       ),
@@ -164,7 +317,8 @@ class _HomeState extends State<Home> {
                                   ),
                                   child: EditTodoScreen(
                                     todo: todo,
-                                    onEdit: _loadTodos,
+                                    onEdit: () =>
+                                        _loadTodosForCollection(selectedCollectionId!),
                                   ),
                                 ),
                               );
@@ -286,7 +440,7 @@ class _HomeState extends State<Home> {
         throw response.error!;
       }
 
-      _loadTodos();
+      _loadTodosForCollection(selectedCollectionId!);
     } catch (e) {
       print('Error deleting todo: $e');
       ShadToaster.of(context).show(
@@ -325,7 +479,7 @@ class _HomeState extends State<Home> {
     }
   }
 
-  Future<void> _loadTodos() async {
+  Future<void> _toggleTodoPin(Todo todo) async {
     final supabase = Supabase.instance.client;
     try {
       final currentUser = supabase.auth.currentUser;
@@ -333,35 +487,21 @@ class _HomeState extends State<Home> {
         throw 'No user logged in';
       }
 
-      final response = await supabase
+      await supabase
           .from('notes')
-          .select('*')
-          .eq('user_id', currentUser.id)
-          .order('created_at', ascending: false); // Optional: order by creation date
-
-      if (response is! List) {
-        throw 'Invalid response format';
-      }
+          .update({'is_pinned': !todo.isPinned})
+          .match({'id': todo.id, 'user_id': currentUser.id});
 
       setState(() {
-        todos = response.map((item) {
-          final data = {
-            'id': item['id'].toString(),
-            'created_at': item['created_at'],
-            'text': item['text'] ?? '',
-            'is_done': item['is_done'] ?? false,
-            'is_pinned': item['is_pinned'] ?? false,
-            'tag': item['tag'] ?? '',
-          };
-          return Todo.fromJson(data);
-        }).toList();
+        todo.isPinned = !todo.isPinned;
       });
+      _loadTodosForCollection(selectedCollectionId!);
     } catch (e) {
-      print('Error loading todos: $e');
+      print('Error toggling pin: $e');
       if (mounted) {
         ShadToaster.of(context).show(
           ShadToast.destructive(
-            description: Text('Failed to load tasks: $e'),
+            description: Text('Failed to update pin: $e'),
           ),
         );
       }
@@ -389,146 +529,266 @@ class _HomeState extends State<Home> {
     );
   }
 
-  void _showPomodoroScreen(Todo todo) async {
-    await Navigator.push(
+  void _showPomodoroScreen(Todo todo, {Duration? initialTime, PomodoroMode? mode}) async {
+    if (_minimizedPomodoro) {
+      _minimizedPomodoroTimer?.cancel();
+      setState(() {
+        _minimizedPomodoro = false;
+        _minimizedPomodoroTodo = null;
+      });
+      _minimizedPomodoroTimeNotifier.value = Duration.zero;
+    }
+    final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => PomodoroScreen(
           todo: todo,
-          initialMinutes: _remainingTime.inMinutes,
-          initialSeconds: _remainingTime.inSeconds.remainder(60),
+          initialMinutes: initialTime?.inMinutes ?? _remainingTime.inMinutes,
+          initialSeconds: initialTime?.inSeconds.remainder(60) ?? _remainingTime.inSeconds.remainder(60),
+          initialMode: mode,
         ),
       ),
     );
+    if (result is Map) {
+      setState(() {
+        _minimizedPomodoro = true;
+        _minimizedPomodoroTodo = todo;
+      });
+      _minimizedPomodoroTimeNotifier.value = result['duration'] as Duration;
+      _minimizedPomodoroMode = result['mode'] as PomodoroMode;
+      _startMinimizedPomodoroTimer();
+    }
   }
 
-  Widget _buildHeaderCard() {
-    final List<Widget> headerCards = [
-      // Hello card
-      ShadCard(
-        key: ValueKey('hello_card_${DateTime.now().millisecondsSinceEpoch}'),
-        padding: EdgeInsets.all(16),
-        height: 88,
-        width: double.infinity,
-        child: Row(
-          children: [
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  'Hello $_enteredName',
-                  style: ShadTheme.of(context).textTheme.h3,
+  void _startMinimizedPomodoroTimer() {
+    _minimizedPomodoroTimer?.cancel();
+    _minimizedPomodoroTimer = Timer.periodic(Duration(seconds: 1), (timer) {
+      if (!_minimizedPomodoro) {
+        timer.cancel();
+        return;
+      }
+      if (_minimizedPomodoroTimeNotifier.value.inSeconds > 0) {
+        _minimizedPomodoroTimeNotifier.value =
+            _minimizedPomodoroTimeNotifier.value - Duration(seconds: 1);
+      } else {
+        timer.cancel();
+        setState(() {
+          _minimizedPomodoro = false;
+          _minimizedPomodoroTodo = null;
+        });
+        _minimizedPomodoroTimeNotifier.value = Duration.zero;
+      }
+    });
+  }
+
+  List<Map<String, dynamic>> get headerCardsData {
+    final List<Map<String, dynamic>> cards = [
+      {
+        'type': 'hello',
+        'widget': ShadCard(
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          height: 72,
+          width: double.infinity,
+          child: Row(
+            children: [
+              if (_userAvatarUrl != null && _userAvatarUrl!.isNotEmpty)
+                CircleAvatar(
+                  radius: 24,
+                  backgroundImage: NetworkImage(_userAvatarUrl!),
+                  backgroundColor: Colors.transparent,
+                )
+              else
+                CircleAvatar(
+                  radius: 24,
+                  child: Icon(Icons.person),
                 ),
-                RichText(
-                  text: TextSpan(
-                    style: ShadTheme.of(context).textTheme.muted,
-                    children: [
-                      const TextSpan(text: 'You have '),
-                      TextSpan(
-                        text: '${todos.where((todo) => !todo.isDone).length} task(s)',
-                        style: TextStyle(
-                          color: ShadTheme.of(context).colorScheme.primary,
-                          fontWeight: FontWeight.bold,
+              SizedBox(width: 16),
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    'Hello ${_userName ?? ''}',
+                    style: ShadTheme.of(context).textTheme.h3,
+                  ),
+                  RichText(
+                    text: TextSpan(
+                      style: ShadTheme.of(context).textTheme.muted,
+                      children: [
+                        const TextSpan(text: 'You have '),
+                        TextSpan(
+                          text:
+                              '${todos.where((todo) => !todo.isDone).length} task(s)',
+                          style: TextStyle(
+                            color: ShadTheme.of(context).colorScheme.primary,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
+                        const TextSpan(text: ' to complete'),
+                      ],
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      },
+      {
+        'type': 'date',
+        'widget': ShadCard(
+        padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          height: 72,
+          width: double.infinity,
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Row(
+                children: [
+                  Text(
+                    _shortDateFormatter.format(DateTime.now()),
+                    style: ShadTheme.of(context).textTheme.h3,
+                  ),
+                  const SizedBox(width: 8),
+                  Container(
+                    width: 16,
+                    height: 16,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: ShadTheme.of(context).colorScheme.primary,
+                    ),
+                  ),
+                ],
+              ),
+              const Spacer(),
+              _buildDateDisplay(DateTime.now()),
+            ],
+          ),
+        ),
+      },
+    ];
+
+    if (!_minimizedPomodoro && !_pomodoroService.isRunning) {
+      cards.add({
+        'type': 'focus',
+        'widget': GestureDetector(
+          onTap: () async {
+            final selectedTodo = await showModalBottomSheet<Todo>(
+              context: context,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+              ),
+              builder: (context) {
+                final availableTodos = todos.where((t) => !t.isDone).toList();
+                if (availableTodos.isEmpty) {
+                  return Padding(
+                    padding: const EdgeInsets.all(24.0),
+                    child: Center(
+                      child: Text(
+                        "No tasks available to focus on.",
+                        style: ShadTheme.of(context).textTheme.muted,
                       ),
-                      const TextSpan(text: ' to complete'),
+                    ),
+                  );
+                }
+                return Padding(
+                  padding: const EdgeInsets.all(16.0),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Text(
+                        "Select a task to focus on",
+                        style: ShadTheme.of(context).textTheme.h4,
+                      ),
+                      SizedBox(height: 16),
+                      ...availableTodos.map((todo) => ListTile(
+                            title: Text(todo.text, maxLines: 2, overflow: TextOverflow.ellipsis),
+                            onTap: () {
+                              Navigator.pop(context, todo);
+                            },
+                          )),
                     ],
                   ),
-                ),
-              ],
-            ),
-            // Spacer(),
-            // ShadButton.outline(
-            //   child: Icon(LucideIcons.settings2),
-            //   onPressed: () {
-            //     showModalBottomSheet(
-            //       context: context,
-            //       isScrollControlled: true,
-            //       shape: RoundedRectangleBorder(
-            //         borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
-            //       ),
-            //       builder: (context) => ConstrainedBox(
-            //         constraints: BoxConstraints(
-            //           maxHeight: MediaQuery.of(context).size.height * 0.9,
-            //         ),
-            //         child: SettingScreen(
-            //           onClose: () {
-            //             _loadInitialData();
-            //             Navigator.pop(context);
-            //           },
-            //         ),
-            //       ),
-            //     );
-            //   },
-            // ),
-          ],
-        ),
-      ),
-      // Date card
-      ShadCard(
-        key: ValueKey('date_card_${DateTime.now().millisecondsSinceEpoch}'),
-        padding: EdgeInsets.all(16),
-        height: 88,
-        width: double.infinity,
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
+                );
+              },
+            );
+            if (selectedTodo != null) {
+              _showPomodoroScreen(selectedTodo);
+            }
+          },
+          child: ShadCard(
+           padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+           height: 72,
+            width: double.infinity,
+            child: 
+            Center(child: 
             Row(
+              mainAxisAlignment: MainAxisAlignment.center,
               children: [
+                Icon(Icons.bolt, color: ShadTheme.of(context).colorScheme.primary),
+                SizedBox(width: 12),
                 Text(
-                  _shortDateFormatter.format(DateTime.now()),
+                  "Start focusing now",
                   style: ShadTheme.of(context).textTheme.h3,
                 ),
-                const SizedBox(width: 8),
-                Container(
-                  width: 16,
-                  height: 16,
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: ShadTheme.of(context).colorScheme.primary,
+              ],)
+            ),
+          ),
+        ),
+      });
+    }
+
+    if (_minimizedPomodoro && _minimizedPomodoroTodo != null) {
+      cards.add({
+        'type': 'pomodoro_minimized',
+        'widget': GestureDetector(
+          onTap: () {
+            _showPomodoroScreen(
+              _minimizedPomodoroTodo!,
+              initialTime: _minimizedPomodoroTimeNotifier.value,
+              mode: _minimizedPomodoroMode,
+            );
+          },
+          child: ShadCard(
+           padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            height: 72,
+            width: double.infinity,
+            child: Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                ValueListenableBuilder<Duration>(
+                  valueListenable: _minimizedPomodoroTimeNotifier,
+                  builder: (context, value, _) => PomodoroFlipTimer(
+                    duration: value,
+                    label: _getModeLabel(_minimizedPomodoroMode),
+                  ),
+                ),
+                SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    _minimizedPomodoroTodo?.text ?? "",
+                    style: ShadTheme.of(context).textTheme.h4,
+                    overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
             ),
-            const Spacer(),
-            _buildDateDisplay(DateTime.now()),
-            // ShadButton.outline(
-            //   child: Icon(LucideIcons.settings2),
-            //   onPressed: () {
-            //     showModalBottomSheet(
-            //       context: context,
-            //       isScrollControlled: true,
-            //       shape: RoundedRectangleBorder(
-            //         borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
-            //       ),
-            //       builder: (context) => ConstrainedBox(
-            //         constraints: BoxConstraints(
-            //           maxHeight: MediaQuery.of(context).size.height * 0.9,
-            //         ),
-            //         child: SettingScreen(onClose: () {
-            //           Navigator.pop(context);
-            //         }),
-            //       ),
-            //     );
-            //   },
-            // ),
-          ],
+          ),
         ),
-      ),
-      // Pomodoro card
-      if (_pomodoroService.isRunning)
-        GestureDetector(
+      });
+    } else if (_pomodoroService.isRunning) {
+      cards.add({
+        'type': 'pomodoro',
+        'widget': GestureDetector(
           onTap: () {
-            // Open the Pomodoro screen with the current timer
             _showPomodoroScreen(
               todos.firstWhere((todo) => todo.isPinned, orElse: () => todos.first),
             );
           },
           child: ShadCard(
-            key: ValueKey('pomodoro_card_${DateTime.now().millisecondsSinceEpoch}'),
-            padding: EdgeInsets.all(16),
-            height: 88,
+            padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            height: 72,
             width: double.infinity,
             child: Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
@@ -545,33 +805,44 @@ class _HomeState extends State<Home> {
             ),
           ),
         ),
-    ];
+      });
+    }
+    return cards;
+  }
 
-    return GestureDetector(
-      onVerticalDragUpdate: (details) {
-        setState(() {
-          if (details.primaryDelta! < 0) {
-            // Swipe up
-            _currentHeaderIndex = (_currentHeaderIndex + 1) % headerCards.length;
-          } else if (details.primaryDelta! > 0) {
-            // Swipe down
-            _currentHeaderIndex =
-                (_currentHeaderIndex - 1 + headerCards.length) % headerCards.length;
-          }
-        });
+  String _getModeLabel(PomodoroMode mode) {
+    switch (mode) {
+      case PomodoroMode.pomodoro:
+        return "Pomodoro";
+      case PomodoroMode.breakMode:
+        return "Break";
+      case PomodoroMode.longBreak:
+        return "Long Break";
+      default:
+        return "";
+    }
+  }
+
+  Widget _buildHeaderCard() {
+    final cards = headerCardsData;
+    if (cards.isEmpty) return SizedBox.shrink();
+    
+    return FlipCardSwiper(
+      cardData: cards,
+      onCardChange: (newIndex) {
+        // Optionally handle card change
       },
-      child: AnimatedSwitcher(
-        duration: Duration(milliseconds: 300),
-        child: headerCards[_currentHeaderIndex],
-      ),
+      cardBuilder: (context, index, visibleIndex) {
+        return cards[index]['widget'];
+      }, onCardCollectionAnimationComplete: (bool value) {  },
     );
   }
 
   int _selectedIndex = 0;
 
   Widget _buildNavItem(int index, IconData icon, {required bool isCenter}) {
-    final double size = isCenter ? 60 : 48;
-    final double iconSize = isCenter ? 24 : 20;
+    final double size = isCenter ? 48 : 40;
+    final double iconSize = isCenter ? 24 : 16;
 
     return GestureDetector(
       onTap: () {
@@ -624,162 +895,258 @@ class _HomeState extends State<Home> {
     );
   }
 
+  Widget sectionTitle(String text) {
+    final theme = ShadTheme.of(context);
+    return Padding(
+      padding: const EdgeInsets.only(top: 32, bottom: 8),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(text, style: theme.textTheme.h4?.copyWith(fontWeight: FontWeight.bold)),
+          SizedBox(height: 8),
+          Divider(thickness: 1, color: theme.colorScheme.border),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _addCollection() async {
+    final supabase = Supabase.instance.client;
+    final currentUser = supabase.auth.currentUser;
+    final name = _collectionNameController.text.trim();
+    if (currentUser == null || name.isEmpty) return;
+    try {
+      await supabase.from('collections').insert({
+        'name': name,
+        'user_id': currentUser.id,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+      _collectionNameController.clear();
+      Navigator.pop(context);
+      await _loadCollections(); // <-- this will also refresh stats
+    } catch (e) {
+      if (mounted) {
+        ShadToaster.of(context).show(
+          ShadToast.destructive(description: Text('Failed to add collection: $e')),
+        );
+      }
+    }
+  }
+
+  void _showAddCollectionDialog() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+      ),
+      builder: (context) {
+        return ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.5,
+          ),
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+              top: 16,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Add collection',
+                  style: ShadTheme.of(context).textTheme.muted,
+                ),
+                SizedBox(height: 8),
+                Expanded(
+                  child: ShadInput(
+                     onChanged: (value) => setState(() {
+                  newcollection = _collectionNameController.text;
+                }),
+                    controller: _collectionNameController,
+                    autofocus: true,
+                    minLines: null,
+                    maxLines: null,
+                    expands: false,
+                    style: ShadTheme.of(context).textTheme.h4.copyWith(fontSize: 20),
+                    placeholder: Text('Collection name'),
+                    decoration: ShadDecoration(
+                      color: ShadTheme.of(context).colorScheme.background,
+                      focusedBorder: ShadBorder.none,
+                      border: ShadBorder.none,
+                      secondaryBorder: ShadBorder.none,
+                      disableSecondaryBorder: true,
+                    ),
+                  ),
+                ),
+                SizedBox(height: 16),
+                Row(
+                  children: [
+                    Spacer(),
+                    newcollection.isNotEmpty
+                        ? ShadButton(
+                            onPressed: _addCollection,
+                            child: Text("Save"),
+                          )
+                        : SizedBox.shrink(),
+                  ],
+                ),
+                SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildCollectionsList(BuildContext context) {
+    final theme = ShadTheme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _buildHeaderCard(),
+        SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          child: Row(
+            children: [
+              Text('Collections', style: theme.textTheme.h3),
+              Spacer(),
+              ShadButton(
+                leading: Icon(Icons.add, size: 18),
+                child: Text('Add'),
+                size: ShadButtonSize.sm,
+                onPressed: _showAddCollectionDialog,
+              ),
+            ],
+          ),
+        ),
+        Divider(thickness: 1, color: theme.colorScheme.border),
+        SizedBox(height: 16),
+        Expanded(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 24.0),
+            child: collections.isEmpty
+                ? Center(child: Text('No collections found', style: theme.textTheme.muted))
+                : GridView.builder(
+                    gridDelegate: SliverGridDelegateWithFixedCrossAxisCount(
+                      crossAxisCount: 2,
+                      mainAxisSpacing: 16,
+                      crossAxisSpacing: 16,
+                      childAspectRatio: 1.25,
+                    ),
+                    itemCount: collections.length,
+                    itemBuilder: (context, idx) {
+                      final collection = collections[idx];
+                      final stats = _collectionStatsCache[collection['id']] ?? {'total': 0, 'done': 0};
+                      final total = stats['total'] ?? 0;
+                      final done = stats['done'] ?? 0;
+                      final percent = total == 0 ? 0 : ((done / total) * 100).round();
+                      return CollectionCard(
+                        collection: collection,
+                        total: total,
+                        done: done,
+                        percent: percent,
+                        theme: theme,
+                        onTap: () => _onCollectionTap(collection),
+                      );
+                    },
+                  ),
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildNotesList(BuildContext context) {
+    final theme = ShadTheme.of(context);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        SizedBox(height: 16),
+        Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
+          child: Row(
+            children: [
+              IconButton(
+                icon: Icon(Icons.arrow_back, color: theme.colorScheme.primary),
+                onPressed: _onBackToCollections,
+              ),
+              SizedBox(width: 8),
+              Text(selectedCollectionName ?? '', style: theme.textTheme.h3),
+              Spacer(),
+              ShadButton(
+                leading: Icon(Icons.add, size: 18),
+                child: Text('Add'),
+                size: ShadButtonSize.sm,
+                onPressed: _showAddTodoBottomSheet,
+              ),
+            ],
+          ),
+        ),
+        Divider(thickness: 1, color: theme.colorScheme.border),
+        SizedBox(height: 16),
+        if (todos.isEmpty)
+          Center(child: Text('No tasks in this collection', style: theme.textTheme.muted)),
+        ...todos.map((todo) => TodoRow(
+              todo: todo,
+              isPinned: todo.isPinned,
+              theme: theme,
+              onTap: () => _showTodoOptions(todo),
+              onToggle: () => _toggleTodoCompletion(todo),
+            )),
+      ],
+    );
+  }
+
+  Widget _buildBottomNavBar(BuildContext context) {
+    // Remove the center add button for tasks screen
+    return Container(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 20),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            _buildNavItem(0, LucideIcons.folder, isCenter: false),
+            SizedBox(width: 48), // Always placeholder for center button
+            _buildNavItem(2, LucideIcons.settings2, isCenter: false),
+          ],
+        ),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     _timerSubscription.cancel();
+    _minimizedPomodoroTimer?.cancel();
+    _minimizedPomodoroTimeNotifier.dispose();
+    _collectionNameController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: SingleChildScrollView(
-        child: Padding(
-          padding: const EdgeInsets.all(16.0),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              _buildHeaderCard(),
-              SizedBox(height: 16),
-              pinnedTodos.isNotEmpty
-                  ? Text('Pinned Task', style: ShadTheme.of(context).textTheme.muted)
-                  : SizedBox(height: 8),
-              if (pinnedTodos.isNotEmpty)
-                StaggeredGrid.count(
-                  crossAxisCount: 2,
-                  mainAxisSpacing: 8,
-                  crossAxisSpacing: 8,
-                  children: List.generate(
-                    pinnedTodos.length,
-                    (index) {
-                      final todo = pinnedTodos[index];
-                      return GestureDetector(
-                        onTap: () => _showTodoOptions(todo),
-                        child: ShadCard(
-                          padding: EdgeInsets.all(8.0),
-                          rowMainAxisAlignment: MainAxisAlignment.start,
-                          columnMainAxisAlignment: MainAxisAlignment.start,
-                          leading: ShadCheckbox(
-                            value: todo.isDone,
-                            onChanged: (bool? value) async {
-                              _toggleTodoCompletion(todo);
-                            },
-                          ),
-                          child: Text(
-                            todo.text,
-                            style: ShadTheme.of(context).textTheme.h4.copyWith(
-                                  decoration: todo.isDone
-                                      ? TextDecoration.lineThrough
-                                      : null,
-                                  color: todo.isDone
-                                      ? ShadTheme.of(context)
-                                          .colorScheme
-                                          .mutedForeground
-                                      : null,
-                                ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                )
-              else if (unpinnedTodos.isNotEmpty && pinnedTodos.isEmpty)
-                Center(
-                  child: Text(
-                    "You can pin a task to keep it at the top for quick access.",
-                    style: ShadTheme.of(context).textTheme.muted,
-                  ),
+      body: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: SafeArea(
+          child: selectedCollectionId == null
+              ? _buildCollectionsList(context)
+              : Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    _buildHeaderCard(),
+                    Expanded(child: _buildNotesList(context)),
+                  ],
                 ),
-              SizedBox(height: 16),
-              if (unpinnedTodos.isNotEmpty)
-                Text('Task', style: ShadTheme.of(context).textTheme.muted),
-              SizedBox(height: 8),
-              if (unpinnedTodos.isNotEmpty)
-                StaggeredGrid.count(
-                  crossAxisCount: 1,
-                  mainAxisSpacing: 8,
-                  crossAxisSpacing: 8,
-                  children: List.generate(
-                    unpinnedTodos.length,
-                    (index) {
-                      final todo = unpinnedTodos[index];
-                      return Wrap(
-                        direction: Axis.horizontal,
-                        children: [
-                          GestureDetector(
-                            onTap: () => _showTodoOptions(todo),
-                            child: ShadCard(
-                              width: double.infinity,
-                              rowMainAxisAlignment: MainAxisAlignment.start,
-                              columnMainAxisAlignment: MainAxisAlignment.start,
-                              padding: const EdgeInsets.all(8.0),
-                              leading: ShadCheckbox(
-                                value: todo.isDone,
-                                onChanged: (bool? value) async {
-                                  _toggleTodoCompletion(todo);
-                                },
-                              ),
-                              child: Text(
-                                todo.text,
-                                style: ShadTheme.of(context)
-                                    .textTheme
-                                    .list
-                                    .copyWith(
-                                      decoration: todo.isDone
-                                          ? TextDecoration.lineThrough
-                                          : null,
-                                      color: todo.isDone
-                                          ? ShadTheme.of(context)
-                                              .colorScheme
-                                              .mutedForeground
-                                          : null,
-                                    ),
-                              ),
-                            ),
-                          ),
-                          SizedBox(height: 8),
-                        ],
-                      );
-                    },
-                  ),
-                ),
-              if (unpinnedTodos.isEmpty && pinnedTodos.isEmpty)
-                Center(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Text(
-                        "Oh no!!! 👽🛸 Alien here to kidnap a lazy person. Please escape by:",
-                        textAlign: TextAlign.center,
-                        style: ShadTheme.of(context).textTheme.muted,
-                      ),
-                      SizedBox(height: 16),
-                      ShadButton(
-                        onPressed: _showAddTodoBottomSheet,
-                        child: Text("Add Task"),
-                      ),
-                    ],
-                  ),
-                ),
-            ],
-          ),
         ),
       ),
-      bottomNavigationBar: Container(
-       
-        child: Padding(
-          padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 20),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              _buildNavItem(0, Icons.collections, isCenter: false),
-              _buildNavItem(1, Icons.add_circle_outline, isCenter: true),
-              _buildNavItem(2, LucideIcons.settings2, isCenter: false),
-            ],
-          ),
-        ),
-      ),
+      bottomNavigationBar: _buildBottomNavBar(context),
     );
   }
 }

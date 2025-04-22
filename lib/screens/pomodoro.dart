@@ -20,14 +20,15 @@ class PomodoroScreen extends StatefulWidget {
   final int? initialMinutes;
   final int? initialSeconds;
   final bool? isPaused;
+  final PomodoroMode? initialMode; // <-- Add this
 
   PomodoroScreen({
     required this.todo, 
     this.initialMinutes,
     this.initialSeconds,
     this.isPaused,
+    this.initialMode, // <-- Add this
   });
-  
 
   @override
   _PomodoroScreenState createState() => _PomodoroScreenState();
@@ -63,7 +64,9 @@ class _PomodoroScreenState extends State<PomodoroScreen> with WidgetsBindingObse
     _minutes = widget.initialMinutes ?? _podoromotime;
     _seconds = widget.initialSeconds ?? 0;
     _isPaused = widget.isPaused ?? false;
-    
+    if (widget.initialMode != null) {
+      _currentMode = widget.initialMode!;
+    }
     if (widget.todo != null) {
       _startTimer();
     }
@@ -342,6 +345,7 @@ class _PomodoroScreenState extends State<PomodoroScreen> with WidgetsBindingObse
                   initialMinutes: _minutes,
                   initialSeconds: _seconds,
                   isPaused: _isPaused,
+                  initialMode: _currentMode, // <-- Pass the current mode
                 ),
               ),
             );
@@ -390,8 +394,11 @@ class _PomodoroScreenState extends State<PomodoroScreen> with WidgetsBindingObse
   }
 
   void _minimizeScreen() {
-    // Pass the current timer duration back to the home screen
-    Navigator.pop(context, Duration(minutes: _minutes, seconds: _seconds));
+    // Pass the current timer duration and mode back to the home screen
+    Navigator.pop(context, {
+      'duration': Duration(minutes: _minutes, seconds: _seconds),
+      'mode': _currentMode,
+    });
   }
 
   @override
