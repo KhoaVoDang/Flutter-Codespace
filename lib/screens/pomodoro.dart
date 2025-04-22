@@ -24,7 +24,7 @@ class PomodoroScreen extends StatefulWidget {
 
   PomodoroScreen({
     required this.todo, 
-    this.initialMinutes,
+    required this.initialMinutes,
     this.initialSeconds,
     this.isPaused,
     this.initialMode, // <-- Add this
@@ -107,8 +107,8 @@ class _PomodoroScreenState extends State<PomodoroScreen> with WidgetsBindingObse
     _breaktime = prefs.getInt('break_time') ?? 5;
     _longbreaktime = prefs.getInt('long_break_time') ?? 30;
     setState(() {
-      _minutes = _podoromotime;
-      _pomodoroTimeSetting = _podoromotime;
+
+      _minutes = widget.initialMinutes != 0 ? widget.initialMinutes! : _podoromotime;
       _breakTimeSetting = _breaktime;
       _longBreakTimeSetting = _longbreaktime;
     });
@@ -456,7 +456,10 @@ class _PomodoroScreenState extends State<PomodoroScreen> with WidgetsBindingObse
         appBar: AppBar(
           leading: IconButton(
             icon: Icon(LucideIcons.circleX, color: ShadTheme.of(context).colorScheme.mutedForeground),
-            onPressed: () => Navigator.of(context).pop(),
+            onPressed: () {
+              _audioPlayer.stop(); // Pause audio when closing
+              Navigator.of(context).pop();
+            },
           ),
           actions: [
             IconButton(

@@ -56,7 +56,7 @@ class CollectionCard extends StatelessWidget {
                 children: [
                   Icon(Icons.list_alt, size: 18, color: theme.colorScheme.muted),
                   SizedBox(width: 8),
-                  Text('Total tasks: $total', style: theme.textTheme.muted),
+                  Text('$total task', style: theme.textTheme.muted),
                 ],
               ),
               SizedBox(height: 8),
@@ -64,16 +64,15 @@ class CollectionCard extends StatelessWidget {
                 children: [
                   Icon(Icons.check_circle, size: 18, color: theme.colorScheme.primary),
                   SizedBox(width: 8),
-                  Text('Completed: $done', style: theme.textTheme.muted),
+                  Text('$percent% completed', style: theme.textTheme.muted),
                 ],
               ),
               SizedBox(height: 8),
-              Row(
-                children: [
-                  Icon(Icons.percent, size: 18, color: theme.colorScheme.primary),
-                  SizedBox(width: 8),
-                  Text('Finished: $percent%', style: theme.textTheme.muted),
-                ],
+              ShadProgress(
+  minHeight: 6,
+              backgroundColor: theme.colorScheme.muted.withOpacity(0.1),
+              valueColor: AlwaysStoppedAnimation<Color>(theme.colorScheme.primary),
+                value: percent / 100
               ),
               SizedBox(height: 24),
               Row(

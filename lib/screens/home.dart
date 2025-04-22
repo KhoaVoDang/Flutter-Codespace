@@ -532,13 +532,20 @@ class _HomeState extends State<Home> {
       });
       _minimizedPomodoroTimeNotifier.value = Duration.zero;
     }
+    // Extract minutes and seconds if initialTime is provided
+    int? initialMinutes;
+    int? initialSeconds;
+    if (initialTime != null) {
+      initialMinutes = initialTime.inMinutes;
+      initialSeconds = initialTime.inSeconds.remainder(60);
+    }
     final result = await Navigator.push(
       context,
       MaterialPageRoute(
         builder: (context) => PomodoroScreen(
           todo: todo,
-          initialMinutes: initialTime?.inMinutes ?? _remainingTime.inMinutes,
-          initialSeconds: initialTime?.inSeconds.remainder(60) ?? _remainingTime.inSeconds.remainder(60),
+          initialMinutes: initialMinutes ?? _remainingTime.inMinutes,
+          initialSeconds: initialSeconds ?? _remainingTime.inSeconds.remainder(60),
           initialMode: mode,
         ),
       ),
@@ -733,45 +740,7 @@ class _HomeState extends State<Home> {
       });
     }
 
-    if (_minimizedPomodoro && _minimizedPomodoroTodo != null) {
-      cards.add({
-        'type': 'pomodoro_minimized',
-        'widget': GestureDetector(
-          onTap: () {
-            _showPomodoroScreen(
-              _minimizedPomodoroTodo!,
-              initialTime: _minimizedPomodoroTimeNotifier.value,
-              mode: _minimizedPomodoroMode,
-            );
-          },
-          child: ShadCard(
-           padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            height: 72,
-            width: double.infinity,
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                ValueListenableBuilder<Duration>(
-                  valueListenable: _minimizedPomodoroTimeNotifier,
-                  builder: (context, value, _) => PomodoroFlipTimer(
-                    duration: value,
-                    label: _getModeLabel(_minimizedPomodoroMode),
-                  ),
-                ),
-                SizedBox(width: 12),
-                Expanded(
-                  child: Text(
-                    _minimizedPomodoroTodo?.text ?? "",
-                    style: ShadTheme.of(context).textTheme.h4,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ),
-      });
-    } else if (_pomodoroService.isRunning) {
+    if (_pomodoroService.isRunning) {
       cards.add({
         'type': 'pomodoro',
         'widget': GestureDetector(
@@ -829,6 +798,59 @@ class _HomeState extends State<Home> {
       cardBuilder: (context, index, visibleIndex) {
         return cards[index]['widget'];
       }, onCardCollectionAnimationComplete: (bool value) {  },
+    );
+  }
+
+  Widget _buildMinimizedPomodoroBar() {
+    if (!_minimizedPomodoro || _minimizedPomodoroTodo == null) return SizedBox.shrink();
+    final theme = ShadTheme.of(context);
+    return GestureDetector(
+      onTap: () {
+        final duration = _minimizedPomodoroTimeNotifier.value;
+        _showPomodoroScreen(
+          _minimizedPomodoroTodo!,
+          initialTime: duration, // keep for compatibility
+          mode: _minimizedPomodoroMode,
+        );
+      },
+      child: Padding(
+        padding: const EdgeInsets.all(16.0),
+        child: ShadCard(
+        
+          padding: EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+          
+            shadows: [
+              BoxShadow(
+                color: theme.colorScheme.background.withOpacity(0.08),
+                blurRadius: 8,
+                offset: Offset(0, 2),
+              ),
+            ],
+          
+          child: Row(
+            children: [
+              ValueListenableBuilder<Duration>(
+                valueListenable: _minimizedPomodoroTimeNotifier,
+                builder: (context, value, _) => PomodoroFlipTimer(
+                  duration: value,
+                  label: _getModeLabel(_minimizedPomodoroMode),
+                  //fontSize: 16,
+                ),
+              ),
+              SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  _minimizedPomodoroTodo?.text ?? "",
+                  style: theme.textTheme.small,
+                  overflow: TextOverflow.ellipsis,
+                ),
+              ),
+              SizedBox(width: 8),
+              Icon(Icons.chevron_right, color: theme.colorScheme.primary),
+            ],
+          ),
+        ),
+      ),
     );
   }
 
@@ -1129,20 +1151,17 @@ class _HomeState extends State<Home> {
         _buildHeaderCard(),
         
         SizedBox(height: 16),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          child: Row(
-            children: [
-              Text('Collections', style: theme.textTheme.h3),
-              Spacer(),
-              ShadButton(
-                leading: Icon(Icons.add, size: 18),
-                child: Text('Add'),
-                size: ShadButtonSize.sm,
-                onPressed: _showAddCollectionDialog,
-              ),
-            ],
-          ),
+        Row(
+          children: [
+            Text('Collections', style: theme.textTheme.h3),
+            Spacer(),
+            ShadButton(
+              leading: Icon(Icons.add, size: 18),
+              child: Text('Add'),
+              size: ShadButtonSize.sm,
+              onPressed: _showAddCollectionDialog,
+            ),
+          ],
         ),
         Divider(thickness: 1, color: theme.colorScheme.border),
         SizedBox(height: 16),
@@ -1189,25 +1208,23 @@ class _HomeState extends State<Home> {
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         SizedBox(height: 16),
-        Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 24.0),
-          child: Row(
-            children: [
-              IconButton(
-                icon: Icon(Icons.arrow_back, color: theme.colorScheme.primary),
-                onPressed: _onBackToCollections,
-              ),
-              SizedBox(width: 8),
-              Text(selectedCollectionName ?? '', style: theme.textTheme.h3),
-              Spacer(),
-              ShadButton(
-                leading: Icon(Icons.add, size: 18),
-                child: Text('Add'),
-                size: ShadButtonSize.sm,
-                onPressed: _showAddTodoBottomSheet,
-              ),
-            ],
-          ),
+        Row(
+          children: [
+            ShadButton.ghost(
+              padding: EdgeInsets.zero,
+              leading: Icon(Icons.arrow_back, color: theme.colorScheme.primary),
+              onPressed: _onBackToCollections,
+            ),
+            SizedBox(width: 8),
+            Text(selectedCollectionName ?? '', style: theme.textTheme.h3),
+            Spacer(),
+            ShadButton(
+              leading: Icon(Icons.add, size: 18),
+              child: Text('Add'),
+              size: ShadButtonSize.sm,
+              onPressed: _showAddTodoBottomSheet,
+            ),
+          ],
         ),
         Divider(thickness: 1, color: theme.colorScheme.border),
         SizedBox(height: 16),
@@ -1227,8 +1244,24 @@ class _HomeState extends State<Home> {
   Widget _buildBottomNavBar(BuildContext context) {
     // Remove the center add button for tasks screen
     return Container(
+      decoration: BoxDecoration(
+        border: Border(
+          top: BorderSide(
+            color: ShadTheme.of(context).colorScheme.border,
+            width: 1,
+          ),
+        ),
+        color: ShadTheme.of(context).colorScheme.card,
+        boxShadow: [
+          BoxShadow(
+            color: ShadTheme.of(context).colorScheme.background.withOpacity(0.08),
+            blurRadius: 8,
+            offset: Offset(0, -2),
+          ),
+        ],
+      ),
       child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 15, horizontal: 20),
+        padding: const EdgeInsets.fromLTRB(20, 8, 20, 8),
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
@@ -1267,7 +1300,13 @@ class _HomeState extends State<Home> {
                 ),
         ),
       ),
-      bottomNavigationBar: _buildBottomNavBar(context),
+      bottomNavigationBar: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          _buildMinimizedPomodoroBar(),
+          _buildBottomNavBar(context),
+        ],
+      ),
     );
   }
 }
