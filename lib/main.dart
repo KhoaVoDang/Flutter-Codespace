@@ -9,7 +9,7 @@ import 'screens/home.dart';
 import 'screens/welcome.dart';
 import 'screens/login.dart';
 import 'package:google_fonts/google_fonts.dart';
-import 'package:forui/forui.dart';
+
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
