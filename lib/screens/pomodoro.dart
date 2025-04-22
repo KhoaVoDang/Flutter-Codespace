@@ -56,6 +56,11 @@ class _PomodoroScreenState extends State<PomodoroScreen> with WidgetsBindingObse
   Timer? _floatingWindowTimer;
   final ValueNotifier<Duration> _timerNotifier = ValueNotifier(Duration(minutes: 25));
 
+  // Add controllers for Pomodoro settings in the PomodoroScreen state
+  int _pomodoroTimeSetting = 25;
+  int _breakTimeSetting = 5;
+  int _longBreakTimeSetting = 30;
+
   @override
   void initState() {
     super.initState();
@@ -67,6 +72,10 @@ class _PomodoroScreenState extends State<PomodoroScreen> with WidgetsBindingObse
     if (widget.initialMode != null) {
       _currentMode = widget.initialMode!;
     }
+    // Initialize settings values for popup
+    _pomodoroTimeSetting = _podoromotime;
+    _breakTimeSetting = _breaktime;
+    _longBreakTimeSetting = _longbreaktime;
     if (widget.todo != null) {
       _startTimer();
     }
@@ -94,15 +103,30 @@ class _PomodoroScreenState extends State<PomodoroScreen> with WidgetsBindingObse
 
   Future<void> loadPomodoroSettings() async {
     final SharedPreferences prefs = await SharedPreferences.getInstance();
-    _podoromotime =
-        prefs.getInt('pomodoro_time') ?? 25; // default to 25 if not set
-    _breaktime = prefs.getInt('break_time') ?? 5; // default to 5 if not set
-    _longbreaktime =
-        prefs.getInt('long_break_time') ?? 30; // default to 30 if not set
-
+    _podoromotime = prefs.getInt('pomodoro_time') ?? 25;
+    _breaktime = prefs.getInt('break_time') ?? 5;
+    _longbreaktime = prefs.getInt('long_break_time') ?? 30;
     setState(() {
-      _minutes =
-          _podoromotime; // Set initial minutes based on loaded pomodoro time
+      _minutes = _podoromotime;
+      _pomodoroTimeSetting = _podoromotime;
+      _breakTimeSetting = _breaktime;
+      _longBreakTimeSetting = _longbreaktime;
+    });
+  }
+
+  Future<void> _savePomodoroSettings() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setInt('pomodoro_time', _pomodoroTimeSetting);
+    await prefs.setInt('break_time', _breakTimeSetting);
+    await prefs.setInt('long_break_time', _longBreakTimeSetting);
+    setState(() {
+      _podoromotime = _pomodoroTimeSetting;
+      _breaktime = _breakTimeSetting;
+      _longbreaktime = _longBreakTimeSetting;
+      // If currently in a mode, update the timer if needed
+      if (_currentMode == PomodoroMode.pomodoro) _minutes = _podoromotime;
+      if (_currentMode == PomodoroMode.breakMode) _minutes = _breaktime;
+      if (_currentMode == PomodoroMode.longBreak) _minutes = _longbreaktime;
     });
   }
 
@@ -555,117 +579,230 @@ class _PomodoroScreenState extends State<PomodoroScreen> with WidgetsBindingObse
   }
 
   Widget soundSetting(BuildContext context, Function setState) {
+    final theme = ShadTheme.of(context);
+    Widget sectionTitle(String text) {
+      return Padding(
+        padding: const EdgeInsets.only(top: 24, bottom: 8),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text(text, style: theme.textTheme.h4?.copyWith(fontWeight: FontWeight.bold)),
+            SizedBox(height: 8),
+            Divider(thickness: 1, color: theme.colorScheme.border),
+          ],
+        ),
+      );
+    }
+
+    Widget settingRow({
+      required String title,
+      String? subtitle,
+      required Widget trailing,
+      bool showDivider = true,
+    }) {
+      return Column(
+        children: [
+          Padding(
+            padding: const EdgeInsets.symmetric(vertical: 12),
+            child: Row(
+              crossAxisAlignment: subtitle != null ? CrossAxisAlignment.start : CrossAxisAlignment.center,
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(title, style: theme.textTheme.p?.copyWith(fontWeight: FontWeight.w500)),
+                      if (subtitle != null)
+                        Padding(
+                          padding: const EdgeInsets.only(top: 2),
+                          child: Text(
+                            subtitle,
+                            style: theme.textTheme.muted?.copyWith(fontSize: 13),
+                          ),
+                        ),
+                    ],
+                  ),
+                ),
+                trailing,
+              ],
+            ),
+          ),
+          if (showDivider) Divider(height: 1, color: theme.colorScheme.border),
+        ],
+      );
+    }
+
     return Container(
       constraints: const BoxConstraints(maxWidth: 350),
       child: ShadSheet(
         radius: BorderRadius.circular(16),
         closeIcon: SizedBox.shrink(),
         constraints: const BoxConstraints(maxWidth: 350),
-        child: Container(
-          width: double.infinity,
-          child: Column(
-            mainAxisAlignment: MainAxisAlignment.start,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              // Alarm sound section
-              Text("Alarm sound", style: ShadTheme.of(context).textTheme.muted),
-              SizedBox(height: 8),
-              Row(
-                children: [
-                  ShadButton(
-                    backgroundColor: _selectedalarm == 'cat'
-                        ? ShadTheme.of(context).colorScheme.primary
-                        : ShadTheme.of(context).colorScheme.muted,
-                    foregroundColor: _selectedalarm == 'cat'
-                        ? ShadTheme.of(context).colorScheme.primaryForeground
-                        : ShadTheme.of(context).colorScheme.mutedForeground,
-                    onPressed: () {
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                sectionTitle("Pomodoro Settings"),
+                settingRow(
+                  title: "Pomodoro Time",
+                  subtitle: "Duration for each Pomodoro session.",
+                  trailing: ShadSelect<int>(
+                    placeholder: const Text('Select time'),
+                    options: List.generate(
+                      12,
+                      (index) => ShadOption(
+                        value: (index + 1) * 5,
+                        child: Text('${(index + 1) * 5} mins'),
+                      ),
+                    ),
+                    initialValue: _pomodoroTimeSetting,
+                    onChanged: (value) {
                       setState(() {
-                        _selectedalarm = 'cat';
-                        _startAlarm();
+                        _pomodoroTimeSetting = value!;
+                        _savePomodoroSettings();
                       });
                     },
-                    icon: Icon(LucideIcons.cat, size: 20),
+                    selectedOptionBuilder: (context, value) => Text('$value mins'),
                   ),
-                  ShadButton(
-                    backgroundColor: _selectedalarm == 'bird'
-                        ? ShadTheme.of(context).colorScheme.primary
-                        : ShadTheme.of(context).colorScheme.muted,
-                    foregroundColor: _selectedalarm == 'bird'
-                        ? ShadTheme.of(context).colorScheme.primaryForeground
-                        : ShadTheme.of(context).colorScheme.mutedForeground,
-                    onPressed: () {
+                ),
+                settingRow(
+                  title: "Break Time",
+                  subtitle: "Duration for short breaks.",
+                  trailing: ShadSelect<int>(
+                    placeholder: const Text('Select time'),
+                    options: List.generate(
+                      12,
+                      (index) => ShadOption(
+                        value: (index + 1) * 5,
+                        child: Text('${(index + 1) * 5} mins'),
+                      ),
+                    ),
+                    initialValue: _breakTimeSetting,
+                    onChanged: (value) {
                       setState(() {
-                        _selectedalarm = 'bird';
-                        _startAlarm();
+                        _breakTimeSetting = value!;
+                        _savePomodoroSettings();
                       });
                     },
-                    icon: Icon(LucideIcons.bird, size: 20),
+                    selectedOptionBuilder: (context, value) => Text('$value mins'),
                   ),
-                ],
-              ),
-              SizedBox(height: 16),
-
-              // Background sound section
-              Text("Background sound",
-                  style: ShadTheme.of(context).textTheme.muted),
-              //   Text(_selectedsound, style: ShadTheme.of(context).textTheme.muted),
-              SizedBox(height: 8),
-              Row(
-                children: [
-                  ShadButton(
-                    backgroundColor: _isMuted
-                        ? ShadTheme.of(context).colorScheme.primary
-                        : ShadTheme.of(context).colorScheme.muted,
-                    foregroundColor: _isMuted
-                        ? ShadTheme.of(context).colorScheme.primaryForeground
-                        : ShadTheme.of(context).colorScheme.mutedForeground,
-                    onPressed: () {
+                ),
+                settingRow(
+                  title: "Long Break Time",
+                  subtitle: "Duration for long breaks.",
+                  trailing: ShadSelect<int>(
+                    placeholder: const Text('Select time'),
+                    options: List.generate(
+                      12,
+                      (index) => ShadOption(
+                        value: (index + 1) * 5,
+                        child: Text('${(index + 1) * 5} mins'),
+                      ),
+                    ),
+                    initialValue: _longBreakTimeSetting,
+                    onChanged: (value) {
                       setState(() {
-                        _isMuted = !_isMuted;
-                        if (_isMuted) {
-                          _audioPlayer.pause();
-                        } else {
-                          _audioPlayer.resume();
-                        }
+                        _longBreakTimeSetting = value!;
+                        _savePomodoroSettings();
                       });
                     },
-                    icon: Icon(LucideIcons.volumeX, size: 20),
+                    selectedOptionBuilder: (context, value) => Text('$value mins'),
                   ),
-                  ShadButton(
-                    backgroundColor: _selectedsound == 'coffeeshop'
-                        ? ShadTheme.of(context).colorScheme.primary
-                        : ShadTheme.of(context).colorScheme.muted,
-                    foregroundColor: _selectedsound == 'coffeeshop'
-                        ? ShadTheme.of(context).colorScheme.primaryForeground
-                        : ShadTheme.of(context).colorScheme.mutedForeground,
-                    onPressed: () {
-                      setState(() {
-                        _selectedsound = 'coffeeshop';
-                        _playRelaxingSound();
-                      });
-                    },
-                    icon: Icon(LucideIcons.coffee, size: 20),
-                  ),
-                  ShadButton.outline(
-                    backgroundColor: _selectedsound == 'rain'
-                        ? ShadTheme.of(context).colorScheme.primary
-                        : ShadTheme.of(context).colorScheme.muted,
-                    foregroundColor: _selectedsound == 'rain'
-                        ? ShadTheme.of(context).colorScheme.primaryForeground
-                        : ShadTheme.of(context).colorScheme.mutedForeground,
-                    icon: Icon(LucideIcons.cloudRain, size: 20),
-                    onPressed: () {
-                      setState(() {
-                        _selectedsound = 'rain';
-                        _playRelaxingSound();
-                      });
-                    },
-                  ),
-                ],
-              ),
-            ],
+                ),
+                sectionTitle("Alarm Sound"),
+                Row(
+                  children: [
+                    ShadButton(
+                      backgroundColor: _selectedalarm == 'cat'
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.muted,
+                      foregroundColor: _selectedalarm == 'cat'
+                          ? theme.colorScheme.primaryForeground
+                          : theme.colorScheme.mutedForeground,
+                      onPressed: () {
+                        setState(() {
+                          _selectedalarm = 'cat';
+                          _startAlarm();
+                        });
+                      },
+                      icon: Icon(LucideIcons.cat, size: 20),
+                    ),
+                    ShadButton(
+                      backgroundColor: _selectedalarm == 'bird'
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.muted,
+                      foregroundColor: _selectedalarm == 'bird'
+                          ? theme.colorScheme.primaryForeground
+                          : theme.colorScheme.mutedForeground,
+                      onPressed: () {
+                        setState(() {
+                          _selectedalarm = 'bird';
+                          _startAlarm();
+                        });
+                      },
+                      icon: Icon(LucideIcons.bird, size: 20),
+                    ),
+                  ],
+                ),
+                sectionTitle("Background Sound"),
+                Row(
+                  children: [
+                    ShadButton(
+                      backgroundColor: _isMuted
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.muted,
+                      foregroundColor: _isMuted
+                          ? theme.colorScheme.primaryForeground
+                          : theme.colorScheme.mutedForeground,
+                      onPressed: () {
+                        setState(() {
+                          _isMuted = !_isMuted;
+                          if (_isMuted) {
+                            _audioPlayer.pause();
+                          } else {
+                            _audioPlayer.resume();
+                          }
+                        });
+                      },
+                      icon: Icon(LucideIcons.volumeX, size: 20),
+                    ),
+                    ShadButton(
+                      backgroundColor: _selectedsound == 'coffeeshop'
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.muted,
+                      foregroundColor: _selectedsound == 'coffeeshop'
+                          ? theme.colorScheme.primaryForeground
+                          : theme.colorScheme.mutedForeground,
+                      onPressed: () {
+                        setState(() {
+                          _selectedsound = 'coffeeshop';
+                          _playRelaxingSound();
+                        });
+                      },
+                      icon: Icon(LucideIcons.coffee, size: 20),
+                    ),
+                    ShadButton.outline(
+                      backgroundColor: _selectedsound == 'rain'
+                          ? theme.colorScheme.primary
+                          : theme.colorScheme.muted,
+                      foregroundColor: _selectedsound == 'rain'
+                          ? theme.colorScheme.primaryForeground
+                          : theme.colorScheme.mutedForeground,
+                      icon: Icon(LucideIcons.cloudRain, size: 20),
+                      onPressed: () {
+                        setState(() {
+                          _selectedsound = 'rain';
+                          _playRelaxingSound();
+                        });
+                      },
+                    ),
+                  ],
+                ),
+                SizedBox(height: 16),
+              ],
+            ),
           ),
         ),
       ),

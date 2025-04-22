@@ -140,8 +140,8 @@ class _LoginState extends State<Login> {
                           },
                           trailing: ShadButton(
                               trailing: obscure
-                                ? const Icon(LucideIcons.eyeClosed, size: 16)
-                                : const Icon(LucideIcons.eye, size: 16),
+                                ? const Icon(LucideIcons.eye, size: 16)
+                                : const Icon(LucideIcons.eyeClosed, size: 16),
                             width: 24,
                             height: 24,
                             padding: EdgeInsets.zero,
@@ -187,21 +187,9 @@ class _LoginState extends State<Login> {
                   ),
                   // sectionTitle("Other"),
                   Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      ShadButton.link(
-                        child: Text("Nah I'm good",
-                            style: TextStyle(
-                                color: theme.textTheme.muted.color)),
-                        onPressed: () {
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(
-                              builder: (context) => const Home(),
-                            ),
-                          );
-                        },
-                      ),
+                    
                       ShadButton.link(
                         child: const Text("Create an account",
                             style: TextStyle(

@@ -80,25 +80,27 @@ class _AddTodoScreenState extends State<AddTodoScreen> {
             style: ShadTheme.of(context).textTheme.muted,
           ),
         
-             ShadInput(
-              onChanged: (value) => setState(() {
-                note = _textController.text;
-              }),
-              controller: _textController,
-              minLines: null,
-              maxLines: null,
-              expands: true,
-              autofocus: true,
-              style: ShadTheme.of(context).textTheme.h4.copyWith(fontSize: 20),
-              decoration: ShadDecoration(
-                color: ShadTheme.of(context).colorScheme.background,
-                focusedBorder: ShadBorder.none,
-                border: ShadBorder.none,
-                secondaryBorder: ShadBorder.none,
-                disableSecondaryBorder: true,
-              ),
-              // decoration: InputDecoration(labelText: "Todo"),
-            ),
+             Expanded(
+               child: ShadInput(
+                onChanged: (value) => setState(() {
+                  note = _textController.text;
+                }),
+                controller: _textController,
+                minLines: null,
+                maxLines: null,
+                expands: true,
+                autofocus: true,
+                style: ShadTheme.of(context).textTheme.h4.copyWith(fontSize: 20),
+                decoration: ShadDecoration(
+                  color: ShadTheme.of(context).colorScheme.background,
+                  focusedBorder: ShadBorder.none,
+                  border: ShadBorder.none,
+                  secondaryBorder: ShadBorder.none,
+                  disableSecondaryBorder: true,
+                ),
+                // decoration: InputDecoration(labelText: "Todo"),
+                           ),
+             ),
           
           Row(
             children: [

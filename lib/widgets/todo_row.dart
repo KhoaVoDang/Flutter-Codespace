@@ -45,6 +45,8 @@ class TodoRow extends StatelessWidget {
                 children: [
                   Text(
                     todo.text,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
                     style: theme.textTheme.p.copyWith(
                       decoration: todo.isDone ? TextDecoration.lineThrough : null,
                       color: todo.isDone

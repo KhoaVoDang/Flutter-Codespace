@@ -2,6 +2,7 @@ import 'package:shadcn_ui/shadcn_ui.dart';
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:provider/provider.dart';
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../helpers/theme.dart';
 import 'account_settings.dart';
 
@@ -37,6 +38,9 @@ class _SettingScreenState extends State<SettingScreen> {
   int breakTime = 5; // Default break time in minutes
   int longBreakTime = 15; // Default long break time in minutes
 
+  String? _userName;
+  String? _userAvatarUrl;
+
   @override
   void initState() {
     super.initState();
@@ -45,6 +49,7 @@ class _SettingScreenState extends State<SettingScreen> {
     _loadThemeColor();
     _loadDarkMode(); // Load dark mode preference
     _loadPomodoroSettings(); // Load Pomodoro settings
+    _loadUserProfile(); // <-- load user profile
   }
 
   Future<void> _loadName() async {
@@ -104,6 +109,35 @@ class _SettingScreenState extends State<SettingScreen> {
     // For example, clear tasks from a database or shared preferences
     // await TaskDatabase.instance.deleteAllTasks();
     print("All tasks deleted");
+  }
+
+  Future<void> _loadUserProfile() async {
+    final supabase = Supabase.instance.client;
+    final currentUser = supabase.auth.currentUser;
+    if (currentUser == null) return;
+    try {
+      final response = await supabase
+          .from('profiles')
+          .select('preferred_name, avatar_url')
+          .eq('id', currentUser.id)
+          .single();
+      if (response != null && response is Map) {
+        setState(() {
+          _userName = response['preferred_name'] ?? currentUser.email ?? 'User';
+          _userAvatarUrl = response['avatar_url'];
+        });
+      } else {
+        setState(() {
+          _userName = currentUser.email ?? 'User';
+          _userAvatarUrl = null;
+        });
+      }
+    } catch (e) {
+      setState(() {
+        _userName = currentUser.email ?? 'User';
+        _userAvatarUrl = null;
+      });
+    }
   }
 
   List<Widget> getThemeOptions(ShadThemeData theme) {
@@ -210,6 +244,68 @@ class _SettingScreenState extends State<SettingScreen> {
             left: 24, right: 24, bottom: MediaQuery.of(context).viewInsets.bottom),
           child: ListView(
             children: [
+              // --- User avatar and name at the top ---
+              SizedBox(height: 24),
+              GestureDetector(
+                onTap: () {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (context) => Container(
+                        height: MediaQuery.of(context).size.height * 0.9,
+                        child: AccountSettingsScreen(
+                          onClose: () => Navigator.pop(context),
+                        ),
+                      ),
+                    );
+                  },
+                child: ShadCard(
+                  trailing: Icon(
+                    LucideIcons.chevronRight,
+                    color: theme.colorScheme.mutedForeground,
+                  ),
+                  padding: EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      if (_userAvatarUrl != null && _userAvatarUrl!.isNotEmpty)
+                        CircleAvatar(
+                          radius: 32,
+                          backgroundImage: NetworkImage(_userAvatarUrl!),
+                          backgroundColor: Colors.transparent,
+                        )
+                      else
+                        CircleAvatar(
+                          radius: 32,
+                          child: Icon(Icons.person, size: 32),
+                        ),
+                      SizedBox(width: 16),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              _userName ?? '',
+                              style: theme.textTheme.h3,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            Text(
+                              Supabase.instance.client.auth.currentUser?.email ?? '',
+                              style: theme.textTheme.muted,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            
+              // --- End user avatar and name ---
+
               sectionTitle("Preferences"),
               settingRow(
                 title: "Appearance",
@@ -325,51 +421,7 @@ class _SettingScreenState extends State<SettingScreen> {
                   selectedOptionBuilder: (context, value) => Text('$value mins'),
                 ),
               ),
-              sectionTitle("Account"),
-              settingRow(
-                title: "Your Name",
-                subtitle: "Tap to edit your name.",
-                trailing: GestureDetector(
-                  onTap: () {
-                    showModalBottomSheet(
-                      context: context,
-                      isScrollControlled: true,
-                      backgroundColor: Colors.transparent,
-                      builder: (context) => Container(
-                        height: MediaQuery.of(context).size.height * 0.9,
-                        child: AccountSettingsScreen(
-                          onClose: () => Navigator.pop(context),
-                        ),
-                      ),
-                    );
-                  },
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Container(
-                        width: 120,
-                        child: ShadInput(
-                          controller: _nameController,
-                          textAlign: TextAlign.end,
-                          style: theme.textTheme.p,
-                          enabled: false,
-                          decoration: ShadDecoration(
-                            color: theme.colorScheme.card,
-                            focusedBorder: ShadBorder.none,
-                            border: ShadBorder.none,
-                            secondaryBorder: ShadBorder.none,
-                            disableSecondaryBorder: true,
-                          ),
-                        ),
-                      ),
-                      SizedBox(width: 8),
-                      Icon(Icons.arrow_forward_ios, size: 16, color: theme.colorScheme.muted),
-                    ],
-                  ),
-                ),
-                showDivider: false,
-              ),
-              SizedBox(height: 32),
+             
             ],
           ),
         ),

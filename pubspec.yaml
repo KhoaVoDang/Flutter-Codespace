@@ -78,6 +78,8 @@ flutter:
 
   assets:
     - lib/assets/icon/logo.png
+    - lib/assets/audio/rain.mp3
+    - lib/assets/audio/coffeeshop.mp3
 
 
   # To add assets to your application, add an assets section, like this:

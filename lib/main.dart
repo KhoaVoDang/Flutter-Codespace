@@ -38,7 +38,7 @@ class MyApp extends StatelessWidget {
     return Consumer<ThemeNotifier>(
       builder: (context, themeNotifier, child) {
         return ShadApp.material(
-          title: 'Flutter Demo',
+          title: 'Alittle',
           darkTheme: themeNotifier.currentTheme,
           theme: themeNotifier.currentTheme.copyWith(
             textTheme: ShadTextTheme.fromGoogleFont(

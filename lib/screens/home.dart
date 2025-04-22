@@ -26,7 +26,7 @@ class Home extends StatefulWidget {
 }
 
 class _HomeState extends State<Home> {
-  String newcollection = '';
+  String newcollectionname = '';
   List<Todo> todos = [];
   String _selectedTag = 'All';
   int _selectedGrid = 1;
@@ -226,18 +226,13 @@ class _HomeState extends State<Home> {
         borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
       ),
       builder: (BuildContext context) {
-        return Padding(
-          padding: EdgeInsets.only(
-            bottom: MediaQuery.of(context).viewInsets.bottom,
+        return ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.5,
           ),
-          child: ConstrainedBox(
-            constraints: BoxConstraints(
-              maxHeight: MediaQuery.of(context).size.height * 0.5,
-            ),
-            child: AddTodoScreen(
-              onAdd: () => _loadTodosForCollection(selectedCollectionId!),
-              collectionId: selectedCollectionId,
-            ),
+          child: AddTodoScreen(
+            onAdd: () => _loadTodosForCollection(selectedCollectionId!),
+            collectionId: selectedCollectionId,
           ),
         );
       },
@@ -935,7 +930,7 @@ class _HomeState extends State<Home> {
   void _showAddCollectionDialog() {
     showModalBottomSheet(
       context: context,
-      isScrollControlled: true,
+   //   isScrollControlled: true,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
       ),
@@ -960,32 +955,31 @@ class _HomeState extends State<Home> {
                   style: ShadTheme.of(context).textTheme.muted,
                 ),
                 SizedBox(height: 8),
-                Expanded(
-                  child: ShadInput(
-                     onChanged: (value) => setState(() {
-                  newcollection = _collectionNameController.text;
-                }),
-                    controller: _collectionNameController,
-                    autofocus: true,
-                    minLines: null,
-                    maxLines: null,
-                    expands: false,
-                    style: ShadTheme.of(context).textTheme.h4.copyWith(fontSize: 20),
-                    placeholder: Text('Collection name'),
-                    decoration: ShadDecoration(
-                      color: ShadTheme.of(context).colorScheme.background,
-                      focusedBorder: ShadBorder.none,
-                      border: ShadBorder.none,
-                      secondaryBorder: ShadBorder.none,
-                      disableSecondaryBorder: true,
-                    ),
+                ShadInput(
+                 onChanged: (value) => setState(() {
+                newcollectionname= _collectionNameController.text;
+                                },
+                                ),
+                  controller: _collectionNameController,
+                  autofocus: true,
+                  minLines: null,
+                  maxLines: null,
+                  expands: false,
+                  style: ShadTheme.of(context).textTheme.h4.copyWith(fontSize: 20),
+                                //    placeholder: Text('Collection name'),
+                  decoration: ShadDecoration(
+                    color: ShadTheme.of(context).colorScheme.background,
+                    focusedBorder: ShadBorder.none,
+                    border: ShadBorder.none,
+                    secondaryBorder: ShadBorder.none,
+                    disableSecondaryBorder: true,
                   ),
                 ),
-                SizedBox(height: 16),
+              
                 Row(
                   children: [
                     Spacer(),
-                    newcollection.isNotEmpty
+                    newcollectionname.isNotEmpty
                         ? ShadButton(
                             onPressed: _addCollection,
                             child: Text("Save"),
@@ -1002,12 +996,138 @@ class _HomeState extends State<Home> {
     );
   }
 
+  Future<void> _editCollection(Map<String, dynamic> collection) async {
+    final TextEditingController controller = TextEditingController(text: collection['name'] ?? '');
+    await showModalBottomSheet(
+      context: context,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16.0)),
+      ),
+      builder: (context) {
+        return ConstrainedBox(
+          constraints: BoxConstraints(
+            maxHeight: MediaQuery.of(context).size.height * 0.5,
+          ),
+          child: Padding(
+            padding: EdgeInsets.only(
+              left: 16,
+              right: 16,
+              bottom: MediaQuery.of(context).viewInsets.bottom,
+              top: 16,
+            ),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  'Edit collection',
+                  style: ShadTheme.of(context).textTheme.muted,
+                ),
+                SizedBox(height: 8),
+                ShadInput(
+                  controller: controller,
+                  autofocus: true,
+                  minLines: null,
+                  maxLines: null,
+                  expands: false,
+                  style: ShadTheme.of(context).textTheme.h4.copyWith(fontSize: 20),
+                  decoration: ShadDecoration(
+                    color: ShadTheme.of(context).colorScheme.background,
+                    focusedBorder: ShadBorder.none,
+                    border: ShadBorder.none,
+                    secondaryBorder: ShadBorder.none,
+                    disableSecondaryBorder: true,
+                  ),
+                ),
+                SizedBox(height: 16),
+                Row(
+                  children: [
+                    Spacer(),
+                    ShadButton(
+                      onPressed: () async {
+                        final newName = controller.text.trim();
+                        if (newName.isNotEmpty) {
+                          final supabase = Supabase.instance.client;
+                          try {
+                            await supabase
+                                .from('collections')
+                                .update({'name': newName})
+                                .eq('id', collection['id']);
+                            Navigator.pop(context);
+                            await _loadCollections();
+                          } catch (e) {
+                            if (mounted) {
+                              ShadToaster.of(context).show(
+                                ShadToast.destructive(description: Text('Failed to update collection: $e')),
+                              );
+                            }
+                          }
+                        }
+                      },
+                      child: Text("Save"),
+                    ),
+                  ],
+                ),
+                SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Future<void> _deleteCollection(Map<String, dynamic> collection) async {
+    final confirm = await showShadDialog(
+      context: context,
+      builder: (context) => ShadDialog.alert(
+        title: const Text('Delete collection?'),
+        description: const Padding(
+          padding: EdgeInsets.only(bottom: 8),
+          child: Text('This will delete the collection and all its tasks. This action cannot be undone.'),
+        ),
+        actions: [
+          ShadButton.outline(
+            foregroundColor: ShadTheme.of(context).colorScheme.cardForeground,
+            child: const Text('Cancel'),
+            onPressed: () => Navigator.of(context).pop(false),
+          ),
+          ShadButton.destructive(
+            child: const Text('Delete'),
+            onPressed: () => Navigator.of(context).pop(true),
+          ),
+        ],
+      ),
+    );
+    if (confirm == true) {
+      final supabase = Supabase.instance.client;
+      try {
+        // Optionally: delete all notes in this collection first
+        await supabase.from('notes').delete().eq('collection_id', collection['id']);
+        await supabase.from('collections').delete().eq('id', collection['id']);
+        await _loadCollections();
+        if (mounted) {
+          ShadToaster.of(context).show(
+            ShadToast.destructive(description: Text('Collection deleted')),
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ShadToaster.of(context).show(
+            ShadToast.destructive(description: Text('Failed to delete collection: $e')),
+          );
+        }
+      }
+    }
+  }
+
   Widget _buildCollectionsList(BuildContext context) {
     final theme = ShadTheme.of(context);
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         _buildHeaderCard(),
+        
         SizedBox(height: 16),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 24.0),
@@ -1036,7 +1156,7 @@ class _HomeState extends State<Home> {
                       crossAxisCount: 2,
                       mainAxisSpacing: 16,
                       crossAxisSpacing: 16,
-                      childAspectRatio: 1.25,
+                      childAspectRatio: 1,
                     ),
                     itemCount: collections.length,
                     itemBuilder: (context, idx) {
@@ -1052,6 +1172,8 @@ class _HomeState extends State<Home> {
                         percent: percent,
                         theme: theme,
                         onTap: () => _onCollectionTap(collection),
+                        onEdit: () => _editCollection(collection),
+                        onDelete: () => _deleteCollection(collection),
                       );
                     },
                   ),
