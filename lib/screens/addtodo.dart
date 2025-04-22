@@ -79,8 +79,8 @@ class _AddTodoScreenState extends State<AddTodoScreen> {
             'Add task',
             style: ShadTheme.of(context).textTheme.muted,
           ),
-          Expanded(
-            child: ShadInput(
+        
+             ShadInput(
               onChanged: (value) => setState(() {
                 note = _textController.text;
               }),
@@ -99,7 +99,7 @@ class _AddTodoScreenState extends State<AddTodoScreen> {
               ),
               // decoration: InputDecoration(labelText: "Todo"),
             ),
-          ),
+          
           Row(
             children: [
               _isPinned
